@@ -60,8 +60,9 @@ jobs:
           # The agent-runner publishes its own files to runs/*.json and
           # portfolios/*-synthesis.json. Exclude those from the --delete sweep
           # so a site rebuild doesn't blow away agent-produced content.
+          # NOTE: do NOT exclude *.txt — Next.js emits __next._tree.txt
+          # RSC payloads alongside HTML for client-side Link navigation.
           aws s3 sync out/ s3://${{ env.S3_BUCKET }}/ \
-            --exclude "*.txt" \
             --exclude "_next/static/*" \
             --exclude "runs/*.json" \
             --exclude "portfolios/*-synthesis.json" \
