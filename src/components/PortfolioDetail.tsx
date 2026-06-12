@@ -15,6 +15,7 @@ import { TickerSearch } from "@/components/TickerSearch";
 import { DecisionBadge } from "@/components/DecisionBadge";
 import { Disclaimer } from "@/components/Disclaimer";
 import { Markdown } from "@/components/Markdown";
+import { PasswordPrompt } from "@/components/PasswordGate";
 import { estimateRunCost, formatUsd, MONTHLY_CAP_USD } from "@/lib/cost";
 import { tickerToRunId } from "@/lib/runs";
 import {
@@ -22,6 +23,7 @@ import {
   pollJob,
   useAgentHealth,
   AgentServerError,
+  getPassword,
 } from "@/lib/agentClient";
 import type {
   Portfolio,
@@ -128,6 +130,7 @@ function PortfolioView({
 }: ViewProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [jobStatus, setJobStatus] = useState<JobStatus>({ state: "idle" });
+  const [pendingAction, setPendingAction] = useState<null | (() => void)>(null);
   const { health } = useAgentHealth();
   const weights = useMemo(() => computeWeights(portfolio), [portfolio]);
   const stalePositions = portfolio.positions.filter((p) =>
@@ -141,15 +144,24 @@ function PortfolioView({
   const overCap = monthSpent + refreshAllCost > monthlyCap;
   const agentReady = Boolean(health?.ok && health?.anthropicConfigured);
 
+  function ensurePassword(then: () => void): boolean {
+    if (getPassword()) return true;
+    setPendingAction(() => then);
+    return false;
+  }
+
   async function runOne(ticker: string): Promise<JobStatus> {
     if (!agentReady) {
       const status: JobStatus = {
         state: "error",
         message:
-          "Agent server not reachable or ANTHROPIC_API_KEY not configured. Start agent-runner and set the key in agent-runner/.env.",
+          "Agent server not reachable. Try again in a moment, or check the trade-agent service status.",
       };
       setJobStatus(status);
       return status;
+    }
+    if (!ensurePassword(() => void runOne(ticker))) {
+      return { state: "idle" };
     }
     let status: JobStatus;
     try {
@@ -175,19 +187,32 @@ function PortfolioView({
         };
       }
     } catch (e) {
-      const msg =
-        e instanceof AgentServerError
-          ? `Agent server: ${e.message}`
-          : e instanceof Error
-            ? e.message
-            : String(e);
-      status = { state: "error", message: msg };
+      if (e instanceof AgentServerError && e.status === 401) {
+        // Bad / missing password; clear and re-prompt.
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("yeyaxin.tradeAgentPassword.v1");
+        }
+        setPendingAction(() => () => void runOne(ticker));
+        status = {
+          state: "error",
+          message: "Wrong password. Try again.",
+        };
+      } else {
+        const msg =
+          e instanceof AgentServerError
+            ? `Agent server: ${e.message}`
+            : e instanceof Error
+              ? e.message
+              : String(e);
+        status = { state: "error", message: msg };
+      }
     }
     setJobStatus(status);
     return status;
   }
 
   async function refreshAllStale(): Promise<void> {
+    if (!ensurePassword(() => void refreshAllStale())) return;
     for (const p of stalePositions) {
       const result = await runOne(p.ticker);
       if (result.state === "error") return;
@@ -212,6 +237,16 @@ function PortfolioView({
       />
 
       <Disclaimer />
+
+      <PasswordPrompt
+        open={pendingAction !== null}
+        onClose={() => setPendingAction(null)}
+        onSubmit={() => {
+          const action = pendingAction;
+          setPendingAction(null);
+          if (action) action();
+        }}
+      />
 
       <AgentStatusBanner agentReady={agentReady} jobStatus={jobStatus} />
 

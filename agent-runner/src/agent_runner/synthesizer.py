@@ -114,8 +114,14 @@ def synthesize(portfolio_path: Path, model: str = "claude-haiku-4-5") -> Portfol
 
     daily_cap, monthly_cap = get_caps_from_env()
     estimated_cost = cost_for(model, 5_000, 3_000)
-    ledger_path = Path(__file__).resolve().parent.parent.parent / ".spend.json"
-    ledger = SpendLedger.load(ledger_path)
+    table = os.environ.get("DYNAMODB_TABLE")
+    if table:
+        from .dynamo_ledger import DynamoSpendLedger
+
+        ledger: Any = DynamoSpendLedger.load(table)
+    else:
+        ledger_path = Path(__file__).resolve().parent.parent.parent / ".spend.json"
+        ledger = SpendLedger.load(ledger_path)
     from datetime import date as _date
     ok, why = ledger.can_spend(estimated_cost, _date.today(), daily_cap, monthly_cap)
     if not ok:

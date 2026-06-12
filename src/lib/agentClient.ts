@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 
 const DEFAULT_BASE_URL =
-  process.env.NEXT_PUBLIC_AGENT_SERVER_URL || "http://localhost:8787";
+  process.env.NEXT_PUBLIC_AGENT_SERVER_URL || "https://trade-agent.yeyaxin.com";
+
+const PASSWORD_KEY = "yeyaxin.tradeAgentPassword.v1";
 
 export type Health = {
   ok: boolean;
@@ -36,6 +38,30 @@ export class AgentServerError extends Error {
 
 export const agentBaseUrl = DEFAULT_BASE_URL;
 
+export function getPassword(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(PASSWORD_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setPassword(password: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (password) window.localStorage.setItem(PASSWORD_KEY, password);
+    else window.localStorage.removeItem(PASSWORD_KEY);
+  } catch {
+    /* localStorage unavailable */
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const p = getPassword();
+  return p ? { Authorization: `Bearer ${p}` } : {};
+}
+
 export async function fetchHealth(signal?: AbortSignal): Promise<Health | null> {
   try {
     const r = await fetch(`${agentBaseUrl}/health`, { signal });
@@ -54,7 +80,7 @@ export async function startRun(input: {
 }): Promise<StartResp> {
   const r = await fetch(`${agentBaseUrl}/run`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({
       ticker: input.ticker,
       asOfDate: input.asOfDate,
@@ -75,7 +101,7 @@ export async function startSynth(input: {
 }): Promise<StartResp> {
   const r = await fetch(`${agentBaseUrl}/synthesize`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({
       portfolioPath: input.portfolioPath,
       model: input.model ?? "haiku",
@@ -89,7 +115,10 @@ export async function startSynth(input: {
 }
 
 export async function fetchJob(jobId: string, signal?: AbortSignal): Promise<Job> {
-  const r = await fetch(`${agentBaseUrl}/jobs/${encodeURIComponent(jobId)}`, { signal });
+  const r = await fetch(`${agentBaseUrl}/jobs/${encodeURIComponent(jobId)}`, {
+    signal,
+    headers: { ...authHeaders() },
+  });
   if (!r.ok) throw new AgentServerError(r.status, `job ${jobId}: ${r.status}`);
   return (await r.json()) as Job;
 }

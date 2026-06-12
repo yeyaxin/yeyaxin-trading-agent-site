@@ -1,12 +1,15 @@
-"""Local-only HTTP server. Lets the dev site fire real agent runs.
+"""HTTP server for agent-runner. Runs locally (uvicorn) and on App Runner.
 
-NOT intended for production deployment. Phase 3 replaces this with API
-Gateway + Fargate using the same JSON contract.
+Auth: any request to /run, /synthesize, /jobs/{id} requires
+Authorization: Bearer <password> matching env AGENT_PASSWORD. /health is open.
+
+Spend ledger: DynamoDB (when DYNAMODB_TABLE is set) or local file (default).
 """
 
 from __future__ import annotations
 
 import os
+import secrets
 import threading
 import uuid
 from datetime import date as _date
@@ -14,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import uvicorn
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -30,6 +33,33 @@ from .synthesizer import synthesize
 
 
 load_env()
+
+
+def _ledger() -> Any:
+    """Return either DynamoSpendLedger (when configured) or local file ledger."""
+    table = os.environ.get("DYNAMODB_TABLE")
+    if table:
+        from .dynamo_ledger import DynamoSpendLedger
+
+        return DynamoSpendLedger.load(table)
+    return SpendLedger.load(project_root() / ".spend.json")
+
+
+def _check_auth(request: Request) -> None:
+    """Constant-time password check. Raises 401 if not allowed.
+
+    AGENT_PASSWORD unset means auth is disabled (local dev default).
+    """
+    expected = os.environ.get("AGENT_PASSWORD")
+    if not expected:
+        return
+    auth = request.headers.get("authorization", "")
+    prefix = "Bearer "
+    if not auth.startswith(prefix):
+        raise HTTPException(status_code=401, detail="missing bearer token")
+    provided = auth[len(prefix) :].strip()
+    if not secrets.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="invalid password")
 
 
 JOBS: dict[str, dict[str, Any]] = {}
@@ -70,10 +100,6 @@ class JobResp(BaseModel):
 class SynthReq(BaseModel):
     portfolioPath: str
     model: str = "haiku"
-
-
-def _ledger_path() -> Path:
-    return project_root() / ".spend.json"
 
 
 def _new_job() -> str:
@@ -146,28 +172,37 @@ def _do_synth(jid: str, req: SynthReq) -> None:
 
 
 app = FastAPI(title="yeyaxin agent-runner", version=__version__)
+_default_origins = [
+    "http://localhost:3000",
+    "http://localhost:3007",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3007",
+    "https://yeyaxin.com",
+    "https://www.yeyaxin.com",
+]
+_extra = os.environ.get("CORS_EXTRA_ORIGINS", "").strip()
+_origins = _default_origins + ([o.strip() for o in _extra.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3007",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3007",
-    ],
+    allow_origins=_origins,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
 @app.get("/health", response_model=HealthResp)
 def health() -> HealthResp:
     daily_cap, monthly_cap = get_caps_from_env()
-    ledger = SpendLedger.load(_ledger_path())
-    today = _date.today()
-    today_str = today.isoformat()
-    month_str = today.strftime("%Y-%m")
-    day_spent = ledger.day_spent_usd if ledger.day == today_str else 0.0
-    month_spent = ledger.month_spent_usd if ledger.month == month_str else 0.0
+    try:
+        ledger = _ledger()
+        day_spent = ledger.day_spent_usd
+        month_spent = ledger.month_spent_usd
+    except Exception:
+        # If DynamoDB is unreachable, return 0 spend rather than 500ing the
+        # health probe. Site treats /health failure as "agent server down".
+        day_spent = 0.0
+        month_spent = 0.0
     return HealthResp(
         ok=True,
         version=__version__,
@@ -180,7 +215,8 @@ def health() -> HealthResp:
 
 
 @app.post("/run", response_model=RunStartResp)
-def start_run(req: RunReq, background_tasks: BackgroundTasks) -> RunStartResp:
+def start_run(req: RunReq, request: Request, background_tasks: BackgroundTasks) -> RunStartResp:
+    _check_auth(request)
     from .cli_run import MODEL_ALIAS
 
     if req.model not in MODEL_ALIAS:
@@ -190,7 +226,7 @@ def start_run(req: RunReq, background_tasks: BackgroundTasks) -> RunStartResp:
     estimated = estimate_run_cost(deep_model)
 
     daily_cap, monthly_cap = get_caps_from_env()
-    ledger = SpendLedger.load(_ledger_path())
+    ledger = _ledger()
     ok, why = ledger.can_spend(estimated, _date.today(), daily_cap, monthly_cap)
     if not ok:
         raise HTTPException(status_code=402, detail=why)
@@ -201,12 +237,13 @@ def start_run(req: RunReq, background_tasks: BackgroundTasks) -> RunStartResp:
 
 
 @app.post("/synthesize", response_model=RunStartResp)
-def start_synth(req: SynthReq, background_tasks: BackgroundTasks) -> RunStartResp:
+def start_synth(req: SynthReq, request: Request, background_tasks: BackgroundTasks) -> RunStartResp:
+    _check_auth(request)
     from .meter import cost_for
 
     estimated = cost_for("claude-haiku-4-5", 5_000, 3_000)
     daily_cap, monthly_cap = get_caps_from_env()
-    ledger = SpendLedger.load(_ledger_path())
+    ledger = _ledger()
     ok, why = ledger.can_spend(estimated, _date.today(), daily_cap, monthly_cap)
     if not ok:
         raise HTTPException(status_code=402, detail=why)
@@ -217,7 +254,8 @@ def start_synth(req: SynthReq, background_tasks: BackgroundTasks) -> RunStartRes
 
 
 @app.get("/jobs/{job_id}", response_model=JobResp)
-def get_job(job_id: str) -> JobResp:
+def get_job(job_id: str, request: Request) -> JobResp:
+    _check_auth(request)
     job = _get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="unknown job")

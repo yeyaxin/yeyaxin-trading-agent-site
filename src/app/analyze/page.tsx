@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { tickerToRunId } from "@/lib/runs";
 import { estimateRunCost, formatUsd, MONTHLY_CAP_USD } from "@/lib/cost";
 import { Disclaimer } from "@/components/Disclaimer";
+import { useAgentHealth } from "@/lib/agentClient";
 
 const MODELS = [
   { id: "claude-haiku-4-5", label: "Claude Haiku 4.5 — default" },
@@ -23,10 +24,12 @@ export default function AnalyzePage() {
   const [depth, setDepth] = useState(1);
   const [model, setModel] = useState("claude-haiku-4-5");
 
+  const { health } = useAgentHealth();
   const baseCost = useMemo(() => estimateRunCost(model), [model]);
   const estCost = baseCost * depth;
-  const monthSpentSoFar = 0;
-  const monthRemaining = MONTHLY_CAP_USD - monthSpentSoFar;
+  const monthSpentSoFar = health?.monthSpentUsd ?? 0;
+  const monthlyCap = health?.monthlyCapUsd ?? MONTHLY_CAP_USD;
+  const monthRemaining = Math.max(0, monthlyCap - monthSpentSoFar);
   const overCap = estCost > monthRemaining;
 
   const tickerKnown = tickerToRunId[ticker.toUpperCase()] !== undefined;
@@ -111,9 +114,10 @@ export default function AnalyzePage() {
 
         <CostPanel
           estimated={estCost}
-          monthlyCap={MONTHLY_CAP_USD}
+          monthlyCap={monthlyCap}
           monthSpentSoFar={monthSpentSoFar}
           overCap={overCap}
+          live={Boolean(health?.ok)}
         />
 
         <button
@@ -155,11 +159,13 @@ function CostPanel({
   monthlyCap,
   monthSpentSoFar,
   overCap,
+  live,
 }: {
   estimated: number;
   monthlyCap: number;
   monthSpentSoFar: number;
   overCap: boolean;
+  live: boolean;
 }) {
   const pct = Math.min(100, (monthSpentSoFar / monthlyCap) * 100);
   return (
@@ -168,6 +174,9 @@ function CostPanel({
         <span className="text-sm font-medium">Estimated cost</span>
         <span className="font-mono text-lg">{formatUsd(estimated)}</span>
       </div>
+      <p className="text-xs text-muted">
+        Calibrated against a real Haiku run (~$0.48). Sonnet is roughly 3× that.
+      </p>
       <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
         <div
           className="h-full bg-accent"
@@ -178,6 +187,7 @@ function CostPanel({
       <div className="flex items-center justify-between text-xs text-muted">
         <span>
           Month spend: {formatUsd(monthSpentSoFar)} / {formatUsd(monthlyCap)} cap
+          {live ? null : <span className="ml-1">(agent server offline; not live)</span>}
         </span>
         {overCap ? (
           <span className="text-sell font-medium">Would exceed cap</span>

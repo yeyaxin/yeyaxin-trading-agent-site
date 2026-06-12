@@ -1,0 +1,14 @@
+.venv/
+.env
+.env.*
+.spend.json
+results/
+__pycache__/
+**/__pycache__/
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+.git/
+.github/
+README.md

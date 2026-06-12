@@ -42,17 +42,25 @@ def _spend_ledger_path() -> Path:
     return Path(__file__).resolve().parent.parent.parent / ".spend.json"
 
 
+def _ledger() -> Any:
+    table = os.environ.get("DYNAMODB_TABLE")
+    if table:
+        from .dynamo_ledger import DynamoSpendLedger
+
+        return DynamoSpendLedger.load(table)
+    return SpendLedger.load(_spend_ledger_path())
+
+
 def _check_caps(estimated_cost: float) -> None:
     daily_cap, monthly_cap = get_caps_from_env()
-    ledger = SpendLedger.load(_spend_ledger_path())
+    ledger = _ledger()
     ok, why = ledger.can_spend(estimated_cost, date.today(), daily_cap, monthly_cap)
     if not ok:
         raise RuntimeError(f"cost cap blocked the run: {why}")
 
 
 def _commit_spend(actual_cost: float) -> None:
-    ledger = SpendLedger.load(_spend_ledger_path())
-    ledger.commit(actual_cost, date.today())
+    _ledger().commit(actual_cost, date.today())
 
 
 def _build_config(req: RunRequest) -> dict[str, Any]:
