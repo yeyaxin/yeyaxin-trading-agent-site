@@ -82,6 +82,16 @@ export function usePortfolios(): PortfolioMutator {
   useEffect(() => {
     setStore(readStore());
     setHydrated(true);
+
+    // Cross-tab sync: when another tab writes to STORAGE_KEY, refresh state.
+    // The 'storage' event only fires in tabs OTHER than the one writing,
+    // so the writing tab's state is already in sync via persist().
+    function onStorage(e: StorageEvent) {
+      if (e.key !== STORAGE_KEY) return;
+      setStore(readStore());
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   const persist = useCallback((next: Store) => {

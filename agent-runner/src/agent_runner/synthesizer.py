@@ -160,7 +160,7 @@ def synthesize_portfolio(
     if not ok:
         raise RuntimeError(f"cost cap blocked synthesis: {why}")
 
-    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"], max_retries=10)
     user = _build_user_message(portfolio, runs)
 
     schema = {

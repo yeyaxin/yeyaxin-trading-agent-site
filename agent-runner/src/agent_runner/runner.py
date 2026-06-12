@@ -127,8 +127,9 @@ def _make_token_callback(tally: "Tally", default_model: str) -> Any:
 
 def _patch_anthropic_effort() -> None:
     """TradingAgents 0.7.0 always forwards `reasoning_effort` to Anthropic as
-    `effort`, but Claude 4.5/4.7 family models reject the param ('Extra inputs
-    are not permitted'). Strip it for Anthropic builds. Idempotent.
+    `effort`, but Claude 4.5/4.7 family models reject the param. Also adds
+    max_retries so brief 429 rate-limit spikes don't fail the whole pipeline.
+    Idempotent.
     """
     from tradingagents import llm as ta_llm
 
@@ -138,12 +139,21 @@ def _patch_anthropic_effort() -> None:
 
     def patched(provider, model, *, reasoning_effort=None, callbacks=None):  # type: ignore[no-untyped-def]
         effective = None if provider == "anthropic" else reasoning_effort
-        return original(
+        chat = original(
             provider,
             model,
             reasoning_effort=effective,
             callbacks=callbacks,
         )
+        # Anthropic SDK respects max_retries on ChatAnthropic. Bump from default
+        # (2) to 10 so brief 429 / 529 spikes during peak agent rounds don't
+        # nuke the run. Each retry uses exponential backoff.
+        if provider == "anthropic":
+            try:
+                chat.max_retries = 10  # type: ignore[attr-defined]
+            except (AttributeError, TypeError):
+                pass
+        return chat
 
     ta_llm.build_chat_model = patched
     # graph imports the symbol directly — re-bind there too.

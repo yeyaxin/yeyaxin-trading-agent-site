@@ -76,6 +76,37 @@ export function useJobTracker(portfolioId: string, agentReady: boolean) {
   );
   const trackedRef = useRef<Set<string>>(new Set());
 
+  // Cross-tab sync: when another tab writes a running job for this portfolio,
+  // pick it up so this tab shows the same in-progress state.
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key !== lsKey(portfolioId)) return;
+      const ls = readLS(portfolioId);
+      setByTicker((prev) => {
+        const next: Record<string, TickerJobState> = { ...prev };
+        for (const [t, rec] of Object.entries(ls)) {
+          if (next[t]?.state === "running" && next[t].jobId === rec.jobId) continue;
+          next[t] = {
+            state: "running",
+            jobId: rec.jobId,
+            startedAt: rec.startedAt,
+            estimatedCostUsd: rec.estimatedCostUsd,
+          };
+        }
+        // Drop entries that disappeared from LS (cleared in another tab)
+        const lsKeys = new Set(Object.keys(ls));
+        for (const t of Object.keys(next)) {
+          if (next[t].state === "running" && !lsKeys.has(t)) {
+            delete next[t];
+          }
+        }
+        return next;
+      });
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [portfolioId]);
+
   const persistRunning = useCallback(
     (next: Record<string, TickerJobState>) => {
       const data: Record<string, Tracked> = {};
