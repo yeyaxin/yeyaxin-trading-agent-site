@@ -1,0 +1,111 @@
+{
+  "id": "tsla-2026-06-10",
+  "ticker": "TSLA",
+  "asOfDate": "2026-06-10",
+  "createdAt": "2026-06-10T22:23:09Z",
+  "model": { "deep": "claude-sonnet-4-6", "quick": "claude-haiku-4-5" },
+  "debateRounds": 1,
+  "decision": "SELL",
+  "confidence": 0.58,
+  "oneLine": "Auto margins still compressing; FSD/Optimus optionality not enough to justify the multiple here.",
+  "demo": true,
+  "bullCase": [
+    "Robotaxi pilot expanding to 3 new cities; per-mile economics genuinely improving.",
+    "Energy storage business growing 60%+ YoY off a small base.",
+    "Optimus production ramp could matter in 2 years if it actually ships."
+  ],
+  "bearCase": [
+    "Auto gross margin (ex-credits) at 14.8%, lowest in 4 years.",
+    "ASP down 9% YoY across the lineup as price cuts continue.",
+    "China BEV competition (BYD, Li Auto, Xiaomi) accelerating; Q1 China deliveries -16%."
+  ],
+  "risks": [
+    "Highly retail-driven; sentiment swings dominate short-term price action.",
+    "FSD regulatory risk: NHTSA investigation outcome could affect deployment.",
+    "Founder/CEO tweet risk remains unhedgeable."
+  ],
+  "tradePlan": {
+    "action": "SELL",
+    "size": "Reduce existing position by 50%; do not initiate new short.",
+    "entry": "Sell into strength above $182.",
+    "stop": "If buying back, only on close >$210 with volume.",
+    "target": "12-month base case $145, bear $105."
+  },
+  "agents": [
+    {
+      "kind": "fundamentals",
+      "title": "Fundamentals Analyst",
+      "summary": "Margin compression continues; multiple pricing growth not visible in numbers.",
+      "highlights": [
+        "Auto gross margin ex-credits 14.8% (vs 28% in 2022)",
+        "FCF $1.2B last quarter, half of trailing 4Q average",
+        "Forward P/E 78"
+      ],
+      "body": "The fundamental picture for Tesla is harder than the narrative. Auto gross margin excluding regulatory credits has compressed to 14.8% — the lowest level in four years — as ASP declines outpace cost reductions. FCF generation is meaningful but trending the wrong direction quarter over quarter. The market continues to value Tesla as a tech compounder (78x forward earnings) rather than a vehicle manufacturer with margin pressure (peer mean ~7x). The Energy and Services segments are doing well but represent <20% of revenue. The math requires Robotaxi or Optimus to materially contribute to revenue inside 24 months, which the current production data does not yet support."
+    },
+    {
+      "kind": "sentiment",
+      "title": "Sentiment Analyst",
+      "summary": "Polarized — extreme bulls and extreme bears, narrow middle.",
+      "highlights": [
+        "Reddit mention volume +47% WoW",
+        "StockTwits bullish ratio 81% (high but typical for TSLA)",
+        "Short interest 3.2% of float"
+      ],
+      "body": "TSLA sentiment is structurally noisy and not particularly informative. Retail platforms show a +47% week-over-week mention volume increase tied to a Robotaxi expansion announcement. The StockTwits bullish ratio of 81% is high but in line with TSLA's typical range. Short interest at 3.2% is unremarkable. Notably, options skew has shifted bearish over the past two weeks, with put open interest growing faster than call OI for the first time in six months — a quiet signal of institutional repositioning."
+    },
+    {
+      "kind": "news",
+      "title": "News Analyst",
+      "summary": "Robotaxi narrative positive, China numbers continue to disappoint.",
+      "highlights": [
+        "Austin Robotaxi pilot expanded to Phoenix and Atlanta",
+        "China May deliveries -16% YoY",
+        "NHTSA opens new investigation into AP-related collisions"
+      ],
+      "body": "The week's news flow is mixed but tilts negative. Tesla announced expansion of the Austin-launched Robotaxi pilot to Phoenix and Atlanta, which is a genuine product milestone. However, May China delivery data showed -16% YoY, the fourth consecutive month of double-digit declines. NHTSA also opened a new preliminary investigation into Autopilot-related crashes; historically these investigations take 18+ months and rarely result in immediate restrictions, but the headline risk is real."
+    },
+    {
+      "kind": "technical",
+      "title": "Technical Analyst",
+      "summary": "Distribution pattern; below key moving averages.",
+      "highlights": [
+        "RSI(14) 42",
+        "50d MA below 200d MA — bearish stack",
+        "Recent failed breakout above $182"
+      ],
+      "body": "Technically, TSLA is in a distribution pattern. The 50-day MA crossed below the 200-day MA two months ago and remains so. A recent attempt to break $182 failed on declining volume, which is characteristic of a lower-high formation. RSI at 42 is neutral but trending down. The clean technical view is that any rally toward $190 should be sold; a break of $148 would target the $128–$135 demand zone."
+    },
+    {
+      "kind": "bull",
+      "title": "Bull Researcher",
+      "summary": "FSD + Optimus optionality is mispriced.",
+      "body": "The bear case is fixated on auto margins, but Tesla is no longer just an auto company. The Robotaxi expansion is real product evidence, not vaporware. Optimus production ramp is now visible in supplier data. The market consistently underestimates Elon's ability to deliver on multi-year hardware roadmaps. Selling here is selling the lows of the auto-margin cycle while ignoring the optionality that's actually starting to ship."
+    },
+    {
+      "kind": "bear",
+      "title": "Bear Researcher",
+      "summary": "Optionality has been the bull case for 5 years; results haven't followed.",
+      "body": "The 'optionality' framing has been the bull case for half a decade. In that time, FSD has not become a profit driver, Cybertruck has underwhelmed, and auto margins have compressed by half. Robotaxi expansion is to three small markets with a tiny vehicle fleet — it is not a meaningful revenue contributor on any near-term horizon. China is structurally getting worse, not better. The base auto business is deteriorating faster than the optionality is materializing."
+    },
+    {
+      "kind": "trader",
+      "title": "Trader",
+      "summary": "Reduce existing position; do not short.",
+      "body": "Rate of change in fundamentals is negative and the technical picture confirms it. The right action is to reduce existing exposure by 50% on any strength toward $182. I would not initiate a new short — TSLA's retail-driven volatility makes it a difficult short on risk-adjusted basis, and the headline risk on Robotaxi or Optimus catalysts is real. Cash-out is preferable to short."
+    },
+    {
+      "kind": "risk",
+      "title": "Risk Manager",
+      "summary": "Approve sell. Flag tweet risk and FSD investigation cadence.",
+      "body": "Approving the SELL recommendation. Two flags for monitoring: (1) CEO public commentary remains a one-day-move risk on either side and is fundamentally unhedgeable; size accordingly. (2) NHTSA investigation milestones can move the stock; track for any escalation language in subsequent filings. Position size cap if rebuilding: 3% of NAV."
+    },
+    {
+      "kind": "portfolio",
+      "title": "Portfolio Manager",
+      "summary": "Final: SELL. Confidence 0.58.",
+      "body": "Decision: SELL (reduce). This is a moderate-confidence call, not a high-conviction one. The fundamentals are clearly deteriorating and the technicals confirm it, but TSLA's narrative volatility and a credible Robotaxi/Optimus tail keep us from a more aggressive stance. Reduce existing position by 50% into strength. Reassess if either (a) auto margin ex-credits reverses higher in two consecutive quarters, or (b) Robotaxi reaches >50k vehicles deployed."
+    }
+  ],
+  "usage": { "inputTokens": 79100, "outputTokens": 12500, "costUsd": 0.43 }
+}

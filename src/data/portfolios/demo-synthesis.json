@@ -1,0 +1,64 @@
+{
+  "id": "demo-synth-2026-06-12-014101",
+  "portfolioId": "demo",
+  "createdAt": "2026-06-12T01:41:01Z",
+  "bookCommentary": "The Demo Book is concentrated in mega-cap semiconductor and consumer technology, with NVDA representing 52% of NAV and TSLA a volatile 31% position. While NVDA's 16.1\u00d7 forward PE appears reasonable relative to 95% EPS growth expectations, the bull case hinges entirely on sustained hyperscaler capex and the unproven broadening of agentic AI\u2014a thesis that consensus (95% Buy, post-30% rally) has already fully priced in. The single most leveraged action is to TRIM TSLA's 31% weight by 50%, freeing $13.9k in capital that can be redeployed: auto gross margins have compressed to 14.8% (4-year low), China deliveries fell 16% YoY, and management's FSD/Optimus optionality cannot justify current valuation when core automotive fundamentals are deteriorating. AAPL's BUY recommendation at 27\u00d7 on the back of Services reacceleration (+14% YoY at 71% margin) is tactically sound; scaling a 4%\u20136% position into the $192\u2013$198 zone is prudent given regulatory overhang (DOJ antitrust, EU DMA) and FX headwinds (58% international revenue in a strong-dollar environment). The portfolio would then shift from extreme concentration and auto-cyclical leverage toward a more balanced exposure.",
+  "decisions": [
+    {
+      "ticker": "NVDA",
+      "action": "HOLD",
+      "rationale": "Forward PE of 16.1\u00d7 appears reasonable on 95% EPS growth, but 31.4\u00d7 trailing PE and elevated consensus (95% Buy post-30% rally) indicate limited upside surprise buffer. JPMorgan's $170B agentic CPU TAM and Helix Digital deal ($10B+ commitment) validate multi-year capex thesis, but technical deterioration (ADX 13.11, MACD negative, price below 50 SMA) and capex-cycle macro concerns (SMCI financing stress, hyperscaler guidance silence) warrant a measured stance. HOLD pending August 26 earnings.",
+      "sizingNote": "Current weight: 52% of NAV ($27,684 / $53,184). Maintain as core core-holding; do not chase on strength. If price reaches $155\u2013$160, consider small trim to 48% of NAV.",
+      "perTickerRunId": "nvda-2026-06-11",
+      "lastAnalyzedAt": "2026-06-12T01:32:59Z"
+    },
+    {
+      "ticker": "AAPL",
+      "action": "BUY_MORE",
+      "rationale": "Services revenue acceleration (+14% YoY at 71% gross margin) re-rates the business and justifies 27\u00d7 multiple; Apple Intelligence early-cycle adoption signals in emerging markets and $110B buyback authorization (3.5% annualized share-count reduction) provide structural support. Current entry near $195.30 sits in the $192\u2013$198 target zone; regulatory headwinds (DOJ antitrust, EU DMA) and FX exposure (58% international) are real but not disqualifying at this valuation. Confidence 0.71 supports initiating 4% position with scale target to 6%.",
+      "sizingNote": "Current weight: 6.2% of NAV ($3,298 / $53,184). Initiate to 4% (add $1,900 notional) in the $192\u2013$198 zone over next 2\u20133 weeks; scale further to 6% target on any close below $178 (200d MA). Target 12-month price: $228 base case, $250 bull case.",
+      "perTickerRunId": "aapl-2026-06-10",
+      "lastAnalyzedAt": "2026-06-10T22:18:41Z"
+    },
+    {
+      "ticker": "TSLA",
+      "action": "TRIM",
+      "rationale": "Auto gross margin (ex-credits) has compressed to 14.8%, the lowest in 4 years, while ASP fell 9% YoY and China deliveries dropped 16% YoY; FSD regulatory uncertainty (NHTSA investigation) and Optimus production optionality are insufficient to justify current valuation against deteriorating core automotive fundamentals. Analyst confidence only 0.58; target 12-month base case is $145 (14% downside from $168.75). Reduce 50% of position into strength above $182 to de-risk portfolio concentration.",
+      "sizingNote": "Current weight: 31% of NAV ($16,521 / $53,184). TRIM by 50% (sell ~48 shares at market >$182) to reduce to ~15\u201316% of NAV, freeing ~$8,100 in capital for redeployment to AAPL or cash buffer. Do not exit fully; retain 47\u201348 shares for optionality upside (robotaxi pilot, energy storage 60%+ YoY growth) with hard stop >$210 on any buy-back.",
+      "perTickerRunId": "tsla-2026-06-10",
+      "lastAnalyzedAt": "2026-06-10T22:23:09Z"
+    }
+  ],
+  "factorExposure": [
+    {
+      "label": "US Large-Cap Tech (Semiconductor & Consumer Electronics)",
+      "weightPct": 89.3
+    },
+    {
+      "label": "Services & Recurring Revenue (AAPL Services, NVDA Data-Center)",
+      "weightPct": 24.5
+    },
+    {
+      "label": "Electric Vehicle & Autonomous Tech",
+      "weightPct": 31.0
+    },
+    {
+      "label": "Artificial Intelligence & Data Center Capex",
+      "weightPct": 52.0
+    },
+    {
+      "label": "Cash & Equivalents",
+      "weightPct": 10.7
+    }
+  ],
+  "topRisks": [
+    "Extreme concentration in NVDA (52% of NAV) with binary dependency on sustained hyperscaler capex cycle; consensus euphoria (95% Buy rating) and valuation (31.4\u00d7 trailing PE) leave minimal margin for capex moderation or data-center demand softness\u2014especially given SMCI financing stress as a leading indicator.",
+    "Cyclical earnings clustering in Q3 (NVDA Aug 26, AAPL late July) and Q4; any synchronized beat misses or guidance cuts would compress valuations across 89% of portfolio simultaneously, exacerbated by retail-heavy TSLA positioning.",
+    "TSLA concentration (31% of NAV) combines deteriorating auto fundamentals (14.8% gross margin, -16% China deliveries) with binary regulatory/autonomous optionality (NHTSA FSD investigation, Optimus unproven); retention of 15\u201316% post-trim creates asymmetric downside if auto margin compresses further while robotaxi optionality fails to materialize on schedule.",
+    "FX headwind: ~58% of AAPL revenue and ~15\u201320% of NVDA data-center revenue (international cloud capex) exposed to strong-dollar environment; USD strength would compress reported earnings and decelerate growth narratives across positions.",
+    "Regulatory & competitive tail risk: DOJ antitrust suit (AAPL), EU DMA enforcement (AAPL App Store take rate compression), NHTSA investigation (TSLA FSD), and China BEV competition (TSLA) are each individually manageable but collectively create earnings volatility and multiple compression pressure in a risk-off scenario."
+  ],
+  "usage": {
+    "costUsd": 0.0121
+  }
+}

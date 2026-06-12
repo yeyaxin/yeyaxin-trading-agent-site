@@ -1,0 +1,12 @@
+{
+  "id": "demo",
+  "name": "Demo Book",
+  "createdAt": "2026-06-10T22:00:00Z",
+  "updatedAt": "2026-06-10T22:30:00Z",
+  "cashUsd": 8000,
+  "positions": [
+    { "ticker": "NVDA", "shares": 200, "avgCost": 95.4, "lastPrice": 138.42 },
+    { "ticker": "AAPL", "shares": 60, "avgCost": 178.2, "lastPrice": 195.3 },
+    { "ticker": "TSLA", "shares": 95, "avgCost": 224.1, "lastPrice": 168.75 }
+  ]
+}

@@ -39,3 +39,19 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# auto-generated runs index (regenerated each build)
+/src/data/runs/_index.ts
+
+# agent-runner: python venv + secrets + spend ledger + run artifacts
+/agent-runner/.venv/
+/agent-runner/.env
+/agent-runner/.spend.json
+/agent-runner/results/
+/agent-runner/**/__pycache__/
+/agent-runner/.ruff_cache/
+/agent-runner/.pytest_cache/
+/agent-runner/*.egg-info/
+
+# AWS deploy keys (never commit)
+/.aws-deploy-key.json

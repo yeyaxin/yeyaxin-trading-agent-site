@@ -1,0 +1,64 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-trade
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    env:
+      AWS_REGION: us-west-2
+      S3_BUCKET: trade.yeyaxin.com
+      CLOUDFRONT_DISTRIBUTION_ID: E34RSZK4DII7XD
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (static export)
+        env:
+          NEXT_PUBLIC_FINNHUB_API_KEY: ${{ secrets.NEXT_PUBLIC_FINNHUB_API_KEY }}
+        run: npm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Sync HTML + assets to S3 (short cache)
+        run: |
+          aws s3 sync out/ s3://${{ env.S3_BUCKET }}/ \
+            --exclude "*.txt" \
+            --exclude "_next/static/*" \
+            --cache-control "public, max-age=300, s-maxage=86400" \
+            --delete
+
+      - name: Sync _next/static to S3 (immutable cache)
+        run: |
+          aws s3 sync out/_next/static/ s3://${{ env.S3_BUCKET }}/_next/static/ \
+            --cache-control "public, max-age=31536000, immutable"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/trade/*"

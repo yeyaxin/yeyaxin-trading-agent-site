@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "node scripts/generate-runs-index.mjs && next dev",
+    "build": "node scripts/generate-runs-index.mjs && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "generate:runs-index": "node scripts/generate-runs-index.mjs"
   },
   "dependencies": {
     "next": "16.2.9",
