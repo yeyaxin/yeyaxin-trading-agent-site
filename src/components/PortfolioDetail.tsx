@@ -14,6 +14,7 @@ import { DEMO_PORTFOLIO, DEMO_SYNTHESIS } from "@/lib/synthesis";
 import { TickerSearch } from "@/components/TickerSearch";
 import { DecisionBadge } from "@/components/DecisionBadge";
 import { Disclaimer } from "@/components/Disclaimer";
+import { Markdown } from "@/components/Markdown";
 import { estimateRunCost, formatUsd, MONTHLY_CAP_USD } from "@/lib/cost";
 import { tickerToRunId } from "@/lib/runs";
 import {
@@ -373,7 +374,7 @@ function SynthesisPanels({ synthesis }: { synthesis: PortfolioSynthesis }) {
         <h2 className="text-sm uppercase tracking-wider font-medium text-muted">
           Book commentary
         </h2>
-        <p className="leading-relaxed">{synthesis.bookCommentary}</p>
+        <Markdown>{synthesis.bookCommentary}</Markdown>
         <p className="text-xs text-muted font-mono">
           synth {formatUsd(synthesis.usage.costUsd)} ·{" "}
           {new Date(synthesis.createdAt).toLocaleString()}

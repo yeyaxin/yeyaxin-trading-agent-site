@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Run, AgentKind } from "@/lib/types";
 import { DecisionBadge } from "./DecisionBadge";
 import { TickerInPortfolios } from "./TickerInPortfolios";
+import { Markdown } from "./Markdown";
 import { formatUsd } from "@/lib/cost";
 
 const ORDER: AgentKind[] = [
@@ -130,7 +131,7 @@ export function RunReport({ run }: { run: Run }) {
               ))}
             </ul>
           ) : null}
-          <p className="leading-relaxed text-foreground">{active.body}</p>
+          <Markdown>{active.body}</Markdown>
         </article>
       </section>
     </div>
@@ -155,13 +156,23 @@ function Card({
       </h3>
       <ul className="mt-3 space-y-2 text-sm">
         {items.map((it, i) => (
-          <li key={i} className="leading-relaxed">
-            • {it}
+          <li key={i} className="leading-relaxed flex gap-2">
+            <span className="text-muted flex-shrink-0">•</span>
+            <span className="flex-1">
+              <Markdown>{stripBoldHeader(it)}</Markdown>
+            </span>
           </li>
         ))}
       </ul>
     </div>
   );
+}
+
+// Strip a leading "**Heading**:" or "**Heading**" prefix the bullet extractor
+// sometimes carries through, since the markdown renderer would turn it into a
+// big bold span.
+function stripBoldHeader(s: string): string {
+  return s.replace(/^\*\*[^*]+\*\*\s*[:\-—]?\s*/, "").trim() || s;
 }
 
 function Stat({
