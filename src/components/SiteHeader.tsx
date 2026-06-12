@@ -8,9 +8,6 @@ export function SiteHeader() {
           yeyaxin <span className="text-accent">/trade</span>
         </Link>
         <nav className="flex items-center gap-6 text-sm text-muted">
-          <Link href="/analyze" className="hover:text-foreground">
-            Analyze
-          </Link>
           <Link href="/portfolio" className="hover:text-foreground">
             Portfolios
           </Link>

@@ -16,10 +16,19 @@ import { DecisionBadge } from "@/components/DecisionBadge";
 import { Disclaimer } from "@/components/Disclaimer";
 import { Markdown } from "@/components/Markdown";
 import { PasswordPrompt } from "@/components/PasswordGate";
-import { estimateRunCost, formatUsd, MONTHLY_CAP_USD } from "@/lib/cost";
+import {
+  estimateRunCost,
+  estimateSynthesisCost,
+  formatUsd,
+  MONTHLY_CAP_USD,
+} from "@/lib/cost";
 import { tickerToRunId } from "@/lib/runs";
 import { useAgentHealth, getPassword } from "@/lib/agentClient";
-import { useJobTracker, type TickerJobState } from "@/lib/job-tracker";
+import {
+  useJobTracker,
+  SYNTHESIS_KEY,
+  type TickerJobState,
+} from "@/lib/job-tracker";
 import type {
   Portfolio,
   PortfolioAction,
@@ -132,10 +141,8 @@ function PortfolioView({
   const overCap = monthSpent + refreshAllCost > monthlyCap;
   const agentReady = Boolean(health?.ok && health?.anthropicConfigured);
 
-  const { byTicker, startTickerRun, clearTickerStatus } = useJobTracker(
-    portfolio.id,
-    agentReady,
-  );
+  const { byTicker, startTickerRun, startSynthesisRun, clearTickerStatus } =
+    useJobTracker(portfolio.id, agentReady);
 
   function ensurePassword(then: () => void): boolean {
     if (getPassword()) return true;
@@ -164,6 +171,19 @@ function PortfolioView({
       await runOne(p.ticker);
       const st = byTicker[p.ticker];
       if (st && st.state === "error") return;
+    }
+  }
+
+  async function synthesizeNow(): Promise<void> {
+    if (!agentReady) return;
+    if (portfolio.positions.length === 0) return;
+    if (!ensurePassword(() => void synthesizeNow())) return;
+    const result = await startSynthesisRun(portfolio, "haiku");
+    if (!result.ok && result.status === 401) {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("yeyaxin.tradeAgentPassword.v1");
+      }
+      setPendingAction(() => () => void synthesizeNow());
     }
   }
 
@@ -230,6 +250,19 @@ function PortfolioView({
         positionCount={portfolio.positions.length}
         synthesizedAt={synthesis?.createdAt}
       />
+
+      {!readOnly ? (
+        <SynthesizeActionPanel
+          portfolio={portfolio}
+          synthesis={synthesis}
+          synthState={byTicker[SYNTHESIS_KEY]}
+          monthSpent={monthSpent}
+          monthlyCap={monthlyCap}
+          agentReady={agentReady}
+          onSynthesize={synthesizeNow}
+          onDismiss={() => clearTickerStatus(SYNTHESIS_KEY)}
+        />
+      ) : null}
 
       {synthesis ? (
         <SynthesisPanels synthesis={synthesis} />
@@ -427,22 +460,135 @@ function EmptySynthesis({ hasPositions }: { hasPositions: boolean }) {
     <section className="rounded-xl border border-dashed border-border p-6 text-center">
       {hasPositions ? (
         <>
-          <h2 className="font-medium">Synthesis not available yet</h2>
+          <h2 className="font-medium">No synthesis yet</h2>
           <p className="text-sm text-muted mt-1">
-            Phase 1 ships with one baked synthesis (the Demo Book). Live synthesis
-            for user portfolios lands in Phase 2 once the Python wrapper is wired
-            up.
+            Re-analyze each position first, then click Synthesize portfolio
+            above. Synthesis reads each ticker&apos;s analysis and produces
+            book-level commentary, factor exposure, and sizing-aware actions.
           </p>
         </>
       ) : (
         <>
           <h2 className="font-medium">Add positions to get started</h2>
           <p className="text-sm text-muted mt-1">
-            Search a ticker below and enter share count. Synthesis runs once
-            you have at least one position.
+            Search a ticker below and enter share count. After you have at
+            least one analyzed position, you can synthesize the book.
           </p>
         </>
       )}
+    </section>
+  );
+}
+
+function SynthesizeActionPanel({
+  portfolio,
+  synthesis,
+  synthState,
+  monthSpent,
+  monthlyCap,
+  agentReady,
+  onSynthesize,
+  onDismiss,
+}: {
+  portfolio: Portfolio;
+  synthesis: PortfolioSynthesis | null;
+  synthState: TickerJobState | undefined;
+  monthSpent: number;
+  monthlyCap: number;
+  agentReady: boolean;
+  onSynthesize: () => void;
+  onDismiss: () => void;
+}) {
+  const cost = estimateSynthesisCost("claude-haiku-4-5");
+  const overCap = monthSpent + cost > monthlyCap;
+  const noPositions = portfolio.positions.length === 0;
+  const isRunning = synthState?.state === "running";
+  const isDone = synthState?.state === "done";
+  const isError = synthState?.state === "error";
+
+  let buttonLabel: string;
+  let disabled = false;
+  if (!agentReady) {
+    buttonLabel = "Agent server offline";
+    disabled = true;
+  } else if (noPositions) {
+    buttonLabel = "Add a position first";
+    disabled = true;
+  } else if (overCap) {
+    buttonLabel = "Over monthly cap";
+    disabled = true;
+  } else if (isRunning) {
+    buttonLabel = "Synthesizing…";
+    disabled = true;
+  } else {
+    buttonLabel = synthesis
+      ? `Re-synthesize · est. ${formatUsd(cost)}`
+      : `Synthesize portfolio · est. ${formatUsd(cost)}`;
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-white p-5 space-y-3">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex-1 min-w-[200px]">
+          <h2 className="font-medium">Portfolio synthesis</h2>
+          <p className="text-sm text-muted mt-1">
+            Reads the latest analysis for each position and produces
+            book-level commentary, factor exposure, and sizing-aware
+            actions. Re-analyze positions first if any are stale.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onSynthesize}
+          disabled={disabled}
+          className="h-11 px-5 rounded-lg bg-accent text-accent-fg font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+        >
+          {buttonLabel}
+        </button>
+      </div>
+
+      {isRunning ? (
+        <div className="rounded-md border border-accent/30 bg-accent/5 px-3 py-2 text-sm flex items-center gap-2">
+          <span
+            className="inline-block h-2 w-2 rounded-full bg-accent animate-pulse"
+            aria-hidden
+          />
+          Running synthesis · safe to navigate away
+        </div>
+      ) : null}
+
+      {isDone ? (
+        <div className="rounded-md border border-buy/30 bg-buy/5 px-3 py-2 text-sm flex items-center justify-between gap-3">
+          <span>
+            Synthesis done. Site rebuild in flight — reload in ~2 min to see
+            updated commentary.
+          </span>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="text-xs text-muted hover:text-foreground"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
+      {isError ? (
+        <div className="rounded-md border border-sell/30 bg-sell/5 px-3 py-2 text-sm text-sell flex items-center justify-between gap-3">
+          <span>
+            {(synthState as Extract<TickerJobState, { state: "error" }>).message}
+          </span>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="text-xs text-muted hover:text-foreground"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

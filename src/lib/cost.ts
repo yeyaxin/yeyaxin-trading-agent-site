@@ -27,6 +27,12 @@ export function estimateRunCost(model: string): number {
   return priceRun(model, TYPICAL_RUN_TOKENS.inputTokens, TYPICAL_RUN_TOKENS.outputTokens);
 }
 
+// Synthesis is one structured-output Anthropic call over per-ticker summaries.
+// Calibrated against demo synthesis: ~5k input / 3k output → $0.012 on Haiku.
+export function estimateSynthesisCost(model = "claude-haiku-4-5"): number {
+  return priceRun(model, 5_000, 3_000);
+}
+
 export type Spend = { monthSoFar: number; cap: number; remaining: number; canRun: boolean };
 
 export function evaluateSpend(monthSoFar: number, plannedCost: number): Spend {

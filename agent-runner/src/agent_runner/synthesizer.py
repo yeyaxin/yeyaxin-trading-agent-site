@@ -46,14 +46,39 @@ Be specific. Quote numbers from the inputs. Do not produce generic advice."""
 
 
 def _load_run(ticker: str) -> Run | None:
+    """Find the latest Run for a ticker. Tries local site-data first
+    (works in CLI mode), then falls back to S3 (works in App Runner where
+    runs only live in S3 after publish)."""
     runs_dir = site_data_dir() / "runs"
-    if not runs_dir.exists():
+    if runs_dir.exists():
+        matches = sorted(runs_dir.glob(f"{ticker.lower()}-*.json"))
+        if matches:
+            return Run.model_validate_json(matches[-1].read_text())
+
+    bucket = os.environ.get("RUN_JSON_BUCKET")
+    if bucket:
+        return _load_run_from_s3(bucket, ticker)
+    return None
+
+
+def _load_run_from_s3(bucket: str, ticker: str) -> Run | None:
+    import boto3
+
+    s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-west-2"))
+    paginator = s3.get_paginator("list_objects_v2")
+    candidates: list[tuple[str, Any]] = []
+    prefix = f"runs/{ticker.lower()}-"
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith(".json"):
+                candidates.append((key, obj.get("LastModified")))
+    if not candidates:
         return None
-    matches = sorted(runs_dir.glob(f"{ticker.lower()}-*.json"))
-    if not matches:
-        return None
-    latest = matches[-1]
-    return Run.model_validate_json(latest.read_text())
+    candidates.sort(key=lambda c: c[1] or 0, reverse=True)
+    latest_key = candidates[0][0]
+    body = s3.get_object(Bucket=bucket, Key=latest_key)["Body"].read()
+    return Run.model_validate_json(body)
 
 
 def _load_portfolio(portfolio_path: Path) -> Portfolio:
@@ -91,11 +116,19 @@ def _build_user_message(p: Portfolio, runs: dict[str, Run]) -> str:
 
 
 def synthesize(portfolio_path: Path, model: str = "claude-haiku-4-5") -> PortfolioSynthesis:
+    """CLI-style entry point. Reads portfolio from disk, then defers to
+    synthesize_portfolio()."""
+    portfolio = _load_portfolio(portfolio_path)
+    return synthesize_portfolio(portfolio, model=model)
+
+
+def synthesize_portfolio(
+    portfolio: Portfolio, model: str = "claude-haiku-4-5"
+) -> PortfolioSynthesis:
     load_env()
     require("ANTHROPIC_API_KEY")
     from anthropic import Anthropic
 
-    portfolio = _load_portfolio(portfolio_path)
     runs: dict[str, Run] = {}
     missing: list[str] = []
     for pos in portfolio.positions:
@@ -109,7 +142,7 @@ def synthesize(portfolio_path: Path, model: str = "claude-haiku-4-5") -> Portfol
         raise RuntimeError(
             "no per-ticker runs found for: "
             + ", ".join(missing)
-            + ". run `uv run run-analysis <TICKER>` first."
+            + ". Re-analyze each missing ticker first."
         )
 
     daily_cap, monthly_cap = get_caps_from_env()

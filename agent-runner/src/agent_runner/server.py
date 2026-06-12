@@ -107,7 +107,12 @@ class JobsListResp(BaseModel):
 
 
 class SynthReq(BaseModel):
-    portfolioPath: str
+    """Synthesis request. Either pass `portfolio` (inline portfolio JSON
+    matching schema.Portfolio) for site-driven runs, OR pass `portfolioPath`
+    (a path readable by the container) for CLI-style invocations."""
+
+    portfolio: dict[str, Any] | None = None
+    portfolioPath: str | None = None
     model: str = "haiku"
     portfolioId: str | None = None
 
@@ -172,6 +177,8 @@ def _do_run(jid: str, req: RunReq) -> None:
 
 def _do_synth(jid: str, req: SynthReq) -> None:
     from .cli_synthesize import MODEL_ALIAS
+    from .schema import Portfolio
+    from .synthesizer import synthesize_portfolio
 
     if req.model not in MODEL_ALIAS:
         _set_job(jid, state="error", error=f"unknown model {req.model!r}")
@@ -179,8 +186,15 @@ def _do_synth(jid: str, req: SynthReq) -> None:
 
     _set_job(jid, state="running")
     try:
-        path = Path(req.portfolioPath).expanduser()
-        synth = synthesize(path, MODEL_ALIAS[req.model])
+        if req.portfolio is not None:
+            portfolio = Portfolio.model_validate(req.portfolio)
+            synth = synthesize_portfolio(portfolio, MODEL_ALIAS[req.model])
+        elif req.portfolioPath:
+            path = Path(req.portfolioPath).expanduser()
+            synth = synthesize(path, MODEL_ALIAS[req.model])
+        else:
+            _set_job(jid, state="error", error="must provide portfolio or portfolioPath")
+            return
         _set_job(
             jid,
             state="done",

@@ -102,14 +102,18 @@ export async function startRun(input: {
 }
 
 export async function startSynth(input: {
-  portfolioPath: string;
+  portfolio?: unknown;
+  portfolioPath?: string;
+  portfolioId?: string;
   model?: "haiku" | "sonnet";
 }): Promise<StartResp> {
   const r = await fetch(`${agentBaseUrl}/synthesize`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({
+      portfolio: input.portfolio,
       portfolioPath: input.portfolioPath,
+      portfolioId: input.portfolioId,
       model: input.model ?? "haiku",
     }),
   });

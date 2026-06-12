@@ -7,10 +7,14 @@ import {
   listJobs,
   pollJob,
   startRun,
+  startSynth,
   type Job,
 } from "./agentClient";
 
 const LS_PREFIX = "yeyaxin.runningJobs.v1";
+
+/** Sentinel key used inside byTicker for portfolio-wide synthesis jobs. */
+export const SYNTHESIS_KEY = "__synth__";
 
 type Tracked = {
   ticker: string;
@@ -233,6 +237,43 @@ export function useJobTracker(portfolioId: string, agentReady: boolean) {
     [portfolioId, trackJob, updateOne],
   );
 
+  const startSynthesisRun = useCallback(
+    async (
+      portfolio: unknown,
+      model: "haiku" | "sonnet" = "haiku",
+    ) => {
+      try {
+        const start = await startSynth({
+          portfolio,
+          portfolioId,
+          model,
+        });
+        const startedAt = new Date().toISOString();
+        updateOne(SYNTHESIS_KEY, {
+          state: "running",
+          jobId: start.jobId,
+          startedAt,
+          estimatedCostUsd: start.estimatedCostUsd,
+        });
+        trackJob(SYNTHESIS_KEY, start.jobId);
+        return { ok: true as const, jobId: start.jobId };
+      } catch (e) {
+        if (e instanceof AgentServerError && e.status === 401) {
+          return { ok: false as const, status: 401 };
+        }
+        const msg =
+          e instanceof AgentServerError
+            ? `Agent server: ${e.message}`
+            : e instanceof Error
+              ? e.message
+              : String(e);
+        updateOne(SYNTHESIS_KEY, { state: "error", jobId: null, message: msg });
+        return { ok: false as const, status: 0 };
+      }
+    },
+    [portfolioId, trackJob, updateOne],
+  );
+
   const clearTickerStatus = useCallback(
     (ticker: string) => {
       setByTicker((prev) => {
@@ -245,5 +286,10 @@ export function useJobTracker(portfolioId: string, agentReady: boolean) {
     [persistRunning],
   );
 
-  return { byTicker, startTickerRun, clearTickerStatus };
+  return {
+    byTicker,
+    startTickerRun,
+    startSynthesisRun,
+    clearTickerStatus,
+  };
 }
