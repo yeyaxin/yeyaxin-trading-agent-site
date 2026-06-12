@@ -57,9 +57,14 @@ jobs:
 
       - name: Sync HTML + assets to S3 (short cache)
         run: |
+          # The agent-runner publishes its own files to runs/*.json and
+          # portfolios/*-synthesis.json. Exclude those from the --delete sweep
+          # so a site rebuild doesn't blow away agent-produced content.
           aws s3 sync out/ s3://${{ env.S3_BUCKET }}/ \
             --exclude "*.txt" \
             --exclude "_next/static/*" \
+            --exclude "runs/*.json" \
+            --exclude "portfolios/*-synthesis.json" \
             --cache-control "public, max-age=300, s-maxage=86400" \
             --delete
 
