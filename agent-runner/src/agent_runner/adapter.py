@@ -35,12 +35,68 @@ def _attr(obj: Any, key: str, default: Any = "") -> Any:
     return getattr(obj, key, default)
 
 
+_PREFIX_LABEL_RE = re.compile(
+    r"^(?:Bull(?:ish)? Analyst|Bear(?:ish)? Analyst|Bull|Bear|Analyst|Note|Reply|Response|Counterpoint|Opening|Rebuttal|Closing)\s*:\s*",
+    re.I,
+)
+
+
+def _strip_inline_md(s: str) -> str:
+    """Remove **bold**, *italic*, `code` markers but keep the inner text."""
+    s = re.sub(r"\*\*\*([^*]+)\*\*\*", r"\1", s)
+    s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
+    s = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", s)
+    s = re.sub(r"`([^`]+)`", r"\1", s)
+    return s.strip()
+
+
 def _summary(body: str) -> str:
     body = body.strip()
     if not body:
         return ""
-    parts = re.split(r"(?<=[.!?])\s+", body)
-    return parts[0][:240] if parts else body[:240]
+    cleaned_lines: list[str] = []
+    for line in body.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("---") or set(s) <= {"-", "=", "*"}:
+            continue
+        if s.startswith("#"):
+            continue
+        s = _PREFIX_LABEL_RE.sub("", s).strip()
+        # Re-check for header marker after the speaker-label strip uncovered it.
+        if s.startswith("#"):
+            continue
+        # Strip ALL inline md so we can evaluate the real content.
+        cleaned = _strip_inline_md(s)
+        if not cleaned:
+            continue
+        # If the line has no period AND looks like "Label1: V1 | Label2: V2"
+        # — multiple short k:v pairs separated by | or ; — drop it.
+        if (
+            "." not in cleaned
+            and "|" in cleaned
+            and cleaned.count(":") >= 1
+        ):
+            continue
+        # Drop pure label/title lines (all caps + short).
+        if cleaned.isupper() and len(cleaned) < 80:
+            continue
+        # Drop "Date: ..." style standalone metadata lines.
+        if re.fullmatch(r"[A-Za-z][A-Za-z ]*:\s*[A-Za-z0-9 ,\-–]+", cleaned):
+            continue
+        cleaned_lines.append(cleaned)
+        if len(cleaned_lines) >= 6:
+            break
+
+    text = " ".join(cleaned_lines) or _strip_inline_md(body)
+    parts = re.split(r"(?<=[.!?])\s+", text)
+    for p in parts:
+        p = p.strip()
+        # require a real sentence with multiple words and reasonable length
+        if len(p) >= 40 and len(p.split()) >= 6:
+            return p[:240]
+    return text[:240]
 
 
 _HEADER_RE = re.compile(r"^#{1,6}\s")

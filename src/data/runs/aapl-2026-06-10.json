@@ -3,15 +3,18 @@
   "ticker": "AAPL",
   "asOfDate": "2026-06-10",
   "createdAt": "2026-06-10T22:18:41Z",
-  "model": { "deep": "claude-sonnet-4-6", "quick": "claude-haiku-4-5" },
+  "model": {
+    "deep": "claude-sonnet-4-6",
+    "quick": "claude-haiku-4-5"
+  },
   "debateRounds": 1,
   "decision": "BUY",
   "confidence": 0.71,
   "oneLine": "Services growth + AI feature cycle starting to show; reasonable entry at 27x.",
   "demo": true,
   "bullCase": [
-    "Services revenue +14% YoY at 71% gross margin — re-rates the multiple.",
-    "Apple Intelligence rollout broadening — early upgrade signal in EM markets.",
+    "Services revenue +14% YoY at 71% gross margin \u2014 re-rates the multiple.",
+    "Apple Intelligence rollout broadening \u2014 early upgrade signal in EM markets.",
     "Buyback authorization at $110B; ~3.5% annualized share-count reduction."
   ],
   "bearCase": [
@@ -21,13 +24,13 @@
   ],
   "risks": [
     "Regulatory: ongoing DOJ antitrust suit, EU DMA enforcement.",
-    "FX: ~58% of revenue international — strong dollar is a quiet headwind.",
+    "FX: ~58% of revenue international \u2014 strong dollar is a quiet headwind.",
     "Earnings late July; beat-and-raise pattern intact but priced in."
   ],
   "tradePlan": {
     "action": "BUY",
     "size": "Initiate 4% position; scale to 6% on weakness.",
-    "entry": "$192–$198 zone (current).",
+    "entry": "$192\u2013$198 zone (current).",
     "stop": "Soft stop $178 (200d MA test).",
     "target": "12-month base case $228, bull $250."
   },
@@ -35,7 +38,7 @@
     {
       "kind": "fundamentals",
       "title": "Fundamentals Analyst",
-      "summary": "Quality compounder transitioning into Services-led growth.",
+      "summary": "Apple's fundamental story has quietly shifted.",
       "highlights": [
         "Services 26% of revenue (up from 19% three years ago)",
         "ROIC 35%+",
@@ -46,31 +49,31 @@
     {
       "kind": "sentiment",
       "title": "Sentiment Analyst",
-      "summary": "Quietly constructive; not crowded.",
+      "summary": "Sentiment for AAPL is unusually quiet for a name of this size.",
       "highlights": [
         "Reddit mention volume neutral",
         "StockTwits bullish ratio 64% (median)",
         "Buy-side positioning: 13Fs show net adds in Q1"
       ],
-      "body": "Sentiment for AAPL is unusually quiet for a name of this size. Mention volume on retail platforms is at trailing-year median. The StockTwits bullish ratio of 64% is slightly above neutral but nowhere near euphoric. 13F flows show institutions adding modestly into Q1, with no notable large-position trims. This combination — constructive flows without retail excitement — is historically a benign setup for medium-term outperformance."
+      "body": "Sentiment for AAPL is unusually quiet for a name of this size. Mention volume on retail platforms is at trailing-year median. The StockTwits bullish ratio of 64% is slightly above neutral but nowhere near euphoric. 13F flows show institutions adding modestly into Q1, with no notable large-position trims. This combination \u2014 constructive flows without retail excitement \u2014 is historically a benign setup for medium-term outperformance."
     },
     {
       "kind": "news",
       "title": "News Analyst",
-      "summary": "Apple Intelligence rollout is the dominant narrative.",
+      "summary": "The dominant news theme is the Apple Intelligence feature cycle.",
       "highlights": [
         "Apple Intelligence broadening to Indonesia, Vietnam, Brazil",
         "Reuters scoop: Apple negotiating with Anthropic for on-device foundation models",
         "WSJ: India production at 23% of global iPhone output"
       ],
-      "body": "The dominant news theme is the Apple Intelligence feature cycle. Recent disclosures show feature parity rolling out to emerging markets faster than analysts expected — Indonesia, Vietnam, and Brazil are now live, which historically correlates with upgrade-cycle pull-forward. A Reuters scoop earlier this week suggested Apple is in late-stage talks with Anthropic to license foundation models for on-device tasks; this would be a meaningful credibility boost on the AI side. Manufacturing news is also constructive: India is now 23% of global iPhone output, which mitigates China-concentration risk."
+      "body": "The dominant news theme is the Apple Intelligence feature cycle. Recent disclosures show feature parity rolling out to emerging markets faster than analysts expected \u2014 Indonesia, Vietnam, and Brazil are now live, which historically correlates with upgrade-cycle pull-forward. A Reuters scoop earlier this week suggested Apple is in late-stage talks with Anthropic to license foundation models for on-device tasks; this would be a meaningful credibility boost on the AI side. Manufacturing news is also constructive: India is now 23% of global iPhone output, which mitigates China-concentration risk."
     },
     {
       "kind": "technical",
       "title": "Technical Analyst",
-      "summary": "Healthy uptrend with room to run.",
+      "summary": "Technically, AAPL recently broke out of a 6-month consolidation between $172 and $192 on above-average volume.",
       "highlights": [
-        "RSI(14) 58 — neither overbought nor oversold",
+        "RSI(14) 58 \u2014 neither overbought nor oversold",
         "Recently broke out of 6-month consolidation",
         "Volume confirming move"
       ],
@@ -79,33 +82,37 @@
     {
       "kind": "bull",
       "title": "Bull Researcher",
-      "summary": "Re-rate ahead as Services + AI compound.",
-      "body": "The bear focus on iPhone unit growth misses the point. iPhone is now an installed-base business: 1.5B+ active devices generating an annuity of services, accessories, and trade-in upgrades. Even flat unit growth supports 6–8% revenue growth via the services attach. Layer Apple Intelligence on top — a real reason to upgrade — and the back half of this year and next set up well. Multiple expansion to 30x is reasonable as Services exceeds 30% of revenue."
+      "summary": "The bear focus on iPhone unit growth misses the point.",
+      "body": "The bear focus on iPhone unit growth misses the point. iPhone is now an installed-base business: 1.5B+ active devices generating an annuity of services, accessories, and trade-in upgrades. Even flat unit growth supports 6\u20138% revenue growth via the services attach. Layer Apple Intelligence on top \u2014 a real reason to upgrade \u2014 and the back half of this year and next set up well. Multiple expansion to 30x is reasonable as Services exceeds 30% of revenue."
     },
     {
       "kind": "bear",
       "title": "Bear Researcher",
-      "summary": "Regulatory and competitive risks are real and underweighted.",
+      "summary": "The bull case treats Services as bulletproof, but DMA enforcement in the EU and the ongoing DOJ antitrust suit specifically target App Store take rate.",
       "body": "The bull case treats Services as bulletproof, but DMA enforcement in the EU and the ongoing DOJ antitrust suit specifically target App Store take rate. A 5-percentage-point compression in App Store take is a ~$8B hit to operating income. China is also a slow-motion problem: revenue down 6% YoY and Huawei has clawed back meaningful premium-tier share. The buyback supports the EPS line but doesn't address these structural concerns."
     },
     {
       "kind": "trader",
       "title": "Trader",
-      "summary": "Initiate 4%, scale to 6% on dips.",
-      "body": "The setup is one of the cleaner names in megacap right now: clean technicals, constructive sentiment, real fundamental tailwind from Services and the AI upgrade cycle. I would initiate a 4% position immediately and scale toward 6% on any pullback to the $185–$190 zone. The risk/reward at current levels is roughly +18% to +27% upside vs ~6% downside to the breakout retest."
+      "summary": "The setup is one of the cleaner names in megacap right now: clean technicals, constructive sentiment, real fundamental tailwind from Services and the AI upgrade cycle.",
+      "body": "The setup is one of the cleaner names in megacap right now: clean technicals, constructive sentiment, real fundamental tailwind from Services and the AI upgrade cycle. I would initiate a 4% position immediately and scale toward 6% on any pullback to the $185\u2013$190 zone. The risk/reward at current levels is roughly +18% to +27% upside vs ~6% downside to the breakout retest."
     },
     {
       "kind": "risk",
       "title": "Risk Manager",
-      "summary": "Approve. Cap at 6%, monitor regulatory news.",
+      "summary": "Position cap of 6% is appropriate for a megacap holding.",
       "body": "Approving the BUY. Position cap of 6% is appropriate for a megacap holding. Regulatory headlines are the primary near-term risk; the team should treat any DOJ filing or DMA enforcement update as a checkpoint event. FX risk does not require a hedge at portfolio level given existing diversification."
     },
     {
       "kind": "portfolio",
       "title": "Portfolio Manager",
-      "summary": "Final: BUY. Confidence 0.71.",
+      "summary": "This is a risk-adjusted compounder with a real new feature cycle and reasonable entry math.",
       "body": "Decision: BUY. This is a risk-adjusted compounder with a real new feature cycle and reasonable entry math. Initiate at 4% with the plan to add toward 6% on weakness. The catalysts (Services growth, AI rollout, buyback floor) are durable; the risks (regulation, China) are visible and manageable. Reassess at end of Q3."
     }
   ],
-  "usage": { "inputTokens": 76200, "outputTokens": 11800, "costUsd": 0.41 }
+  "usage": {
+    "inputTokens": 76200,
+    "outputTokens": 11800,
+    "costUsd": 0.41
+  }
 }
