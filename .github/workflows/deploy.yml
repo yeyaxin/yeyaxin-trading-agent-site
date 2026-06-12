@@ -61,4 +61,4 @@ jobs:
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} \
-            --paths "/trade/*"
+            --paths "/trade" "/trade/*" "/trade/_next/*"
