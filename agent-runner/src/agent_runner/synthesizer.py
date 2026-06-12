@@ -215,6 +215,13 @@ def synthesize(portfolio_path: Path, model: str = "claude-haiku-4-5") -> Portfol
     out_path = out_dir / f"{portfolio.id}-synthesis.json"
     out_path.write_text(json.dumps(synth.model_dump(exclude_none=True), indent=2))
 
+    try:
+        from .s3_publisher import publish_synthesis
+
+        publish_synthesis(synth)
+    except Exception as e:  # noqa: BLE001
+        print(f"warning: S3 publish failed: {e}")
+
     ledger.commit(tally.cost_usd, _date.today())
 
     return synth

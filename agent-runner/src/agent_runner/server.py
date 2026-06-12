@@ -81,6 +81,7 @@ class RunReq(BaseModel):
     asOfDate: str | None = None
     model: str = "haiku"  # alias as in cli_run.py
     depth: int = Field(default=1, ge=0, le=3)
+    portfolioId: str | None = None
 
 
 class RunStartResp(BaseModel):
@@ -91,21 +92,40 @@ class RunStartResp(BaseModel):
 class JobResp(BaseModel):
     jobId: str
     state: str  # "queued" | "running" | "done" | "error"
+    kind: str | None = None  # "run" | "synth"
+    ticker: str | None = None
+    portfolioId: str | None = None
     error: str | None = None
     runId: str | None = None
     decision: str | None = None
     actualCostUsd: float | None = None
+    createdAt: str | None = None
+
+
+class JobsListResp(BaseModel):
+    jobs: list[JobResp]
 
 
 class SynthReq(BaseModel):
     portfolioPath: str
     model: str = "haiku"
+    portfolioId: str | None = None
 
 
-def _new_job() -> str:
+class RunReqWithContext(RunReq):
+    portfolioId: str | None = None
+
+
+def _new_job(**context: Any) -> str:
     jid = uuid.uuid4().hex[:12]
+    from datetime import datetime, timezone
+
     with JOBS_LOCK:
-        JOBS[jid] = {"state": "queued"}
+        JOBS[jid] = {
+            "state": "queued",
+            "createdAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            **context,
+        }
     return jid
 
 
@@ -231,7 +251,11 @@ def start_run(req: RunReq, request: Request, background_tasks: BackgroundTasks) 
     if not ok:
         raise HTTPException(status_code=402, detail=why)
 
-    jid = _new_job()
+    jid = _new_job(
+        kind="run",
+        ticker=req.ticker.upper(),
+        portfolioId=getattr(req, "portfolioId", None),
+    )
     background_tasks.add_task(_do_run, jid, req)
     return RunStartResp(jobId=jid, estimatedCostUsd=round(estimated, 4))
 
@@ -248,7 +272,7 @@ def start_synth(req: SynthReq, request: Request, background_tasks: BackgroundTas
     if not ok:
         raise HTTPException(status_code=402, detail=why)
 
-    jid = _new_job()
+    jid = _new_job(kind="synth", portfolioId=req.portfolioId)
     background_tasks.add_task(_do_synth, jid, req)
     return RunStartResp(jobId=jid, estimatedCostUsd=round(estimated, 4))
 
@@ -260,6 +284,30 @@ def get_job(job_id: str, request: Request) -> JobResp:
     if not job:
         raise HTTPException(status_code=404, detail="unknown job")
     return JobResp(jobId=job_id, **job)
+
+
+@app.get("/jobs", response_model=JobsListResp)
+def list_jobs(
+    request: Request,
+    state: str | None = None,
+    portfolioId: str | None = None,
+) -> JobsListResp:
+    """List jobs in the current container's memory. Filterable by state +
+    portfolioId. The site uses this on portfolio detail mount to find any
+    in-flight job that started before a navigation."""
+    _check_auth(request)
+    with JOBS_LOCK:
+        items = [(jid, dict(rec)) for jid, rec in JOBS.items()]
+    out: list[JobResp] = []
+    for jid, rec in items:
+        if state is not None and rec.get("state") != state:
+            continue
+        if portfolioId is not None and rec.get("portfolioId") != portfolioId:
+            continue
+        out.append(JobResp(jobId=jid, **rec))
+    # newest first
+    out.sort(key=lambda j: j.createdAt or "", reverse=True)
+    return JobsListResp(jobs=out)
 
 
 def main() -> None:

@@ -18,13 +18,8 @@ import { Markdown } from "@/components/Markdown";
 import { PasswordPrompt } from "@/components/PasswordGate";
 import { estimateRunCost, formatUsd, MONTHLY_CAP_USD } from "@/lib/cost";
 import { tickerToRunId } from "@/lib/runs";
-import {
-  startRun,
-  pollJob,
-  useAgentHealth,
-  AgentServerError,
-  getPassword,
-} from "@/lib/agentClient";
+import { useAgentHealth, getPassword } from "@/lib/agentClient";
+import { useJobTracker, type TickerJobState } from "@/lib/job-tracker";
 import type {
   Portfolio,
   PortfolioAction,
@@ -33,12 +28,6 @@ import type {
 } from "@/lib/types";
 
 const STALE_HOURS = 8;
-
-type JobStatus =
-  | { state: "idle" }
-  | { state: "running"; ticker: string; jobId: string; estimated: number }
-  | { state: "done"; ticker: string; cost: number; runId: string }
-  | { state: "error"; message: string };
 
 export function PortfolioDetail({ id }: { id: string }) {
   if (id === DEMO_PORTFOLIO_ID) {
@@ -129,7 +118,6 @@ function PortfolioView({
   onDelete,
 }: ViewProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [jobStatus, setJobStatus] = useState<JobStatus>({ state: "idle" });
   const [pendingAction, setPendingAction] = useState<null | (() => void)>(null);
   const { health } = useAgentHealth();
   const weights = useMemo(() => computeWeights(portfolio), [portfolio]);
@@ -144,80 +132,47 @@ function PortfolioView({
   const overCap = monthSpent + refreshAllCost > monthlyCap;
   const agentReady = Boolean(health?.ok && health?.anthropicConfigured);
 
+  const { byTicker, startTickerRun, clearTickerStatus } = useJobTracker(
+    portfolio.id,
+    agentReady,
+  );
+
   function ensurePassword(then: () => void): boolean {
     if (getPassword()) return true;
     setPendingAction(() => then);
     return false;
   }
 
-  async function runOne(ticker: string): Promise<JobStatus> {
+  async function runOne(ticker: string): Promise<void> {
     if (!agentReady) {
-      const status: JobStatus = {
-        state: "error",
-        message:
-          "Agent server not reachable. Try again in a moment, or check the trade-agent service status.",
-      };
-      setJobStatus(status);
-      return status;
+      return;
     }
-    if (!ensurePassword(() => void runOne(ticker))) {
-      return { state: "idle" };
-    }
-    let status: JobStatus;
-    try {
-      const start = await startRun({ ticker, model: "haiku", depth: 1 });
-      setJobStatus({
-        state: "running",
-        ticker,
-        jobId: start.jobId,
-        estimated: start.estimatedCostUsd,
-      });
-      const job = await pollJob(start.jobId);
-      if (job.state === "error") {
-        status = {
-          state: "error",
-          message: job.error ?? `Job ${start.jobId} failed`,
-        };
-      } else {
-        status = {
-          state: "done",
-          ticker,
-          cost: job.actualCostUsd ?? 0,
-          runId: job.runId ?? "",
-        };
+    if (!ensurePassword(() => void runOne(ticker))) return;
+    const result = await startTickerRun(ticker, "haiku");
+    if (!result.ok && result.status === 401) {
+      // password rejected — clear and re-prompt
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("yeyaxin.tradeAgentPassword.v1");
       }
-    } catch (e) {
-      if (e instanceof AgentServerError && e.status === 401) {
-        // Bad / missing password; clear and re-prompt.
-        if (typeof window !== "undefined") {
-          window.localStorage.removeItem("yeyaxin.tradeAgentPassword.v1");
-        }
-        setPendingAction(() => () => void runOne(ticker));
-        status = {
-          state: "error",
-          message: "Wrong password. Try again.",
-        };
-      } else {
-        const msg =
-          e instanceof AgentServerError
-            ? `Agent server: ${e.message}`
-            : e instanceof Error
-              ? e.message
-              : String(e);
-        status = { state: "error", message: msg };
-      }
+      setPendingAction(() => () => void runOne(ticker));
     }
-    setJobStatus(status);
-    return status;
   }
 
   async function refreshAllStale(): Promise<void> {
     if (!ensurePassword(() => void refreshAllStale())) return;
     for (const p of stalePositions) {
-      const result = await runOne(p.ticker);
-      if (result.state === "error") return;
+      await runOne(p.ticker);
+      const st = byTicker[p.ticker];
+      if (st && st.state === "error") return;
     }
   }
+
+  // Aggregate banner state from all tickers
+  const anyRunning = Object.values(byTicker).some((s) => s.state === "running");
+  const lastError = Object.entries(byTicker).find(
+    ([, s]) => s.state === "error",
+  );
+  const lastDone = Object.entries(byTicker).find(([, s]) => s.state === "done");
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10 space-y-8">
@@ -248,7 +203,26 @@ function PortfolioView({
         }}
       />
 
-      <AgentStatusBanner agentReady={agentReady} jobStatus={jobStatus} />
+      <AgentStatusBanner
+        agentReady={agentReady}
+        anyRunning={anyRunning}
+        runningTickers={Object.entries(byTicker)
+          .filter(([, s]) => s.state === "running")
+          .map(([t]) => t)}
+        errorMessage={lastError ? (lastError[1] as Extract<TickerJobState, { state: "error" }>).message : null}
+        doneTicker={lastDone ? lastDone[0] : null}
+        doneCost={
+          lastDone
+            ? (lastDone[1] as Extract<TickerJobState, { state: "done" }>).cost ?? null
+            : null
+        }
+        onDismissError={() => {
+          if (lastError) clearTickerStatus(lastError[0]);
+        }}
+        onDismissDone={() => {
+          if (lastDone) clearTickerStatus(lastDone[0]);
+        }}
+      />
 
       <SummaryStrip
         weights={weights}
@@ -272,9 +246,7 @@ function PortfolioView({
         refreshModel={refreshModel}
         agentReady={agentReady}
         runOne={runOne}
-        runningTicker={
-          jobStatus.state === "running" ? jobStatus.ticker : null
-        }
+        byTicker={byTicker}
       />
 
       {!readOnly && stalePositions.length > 0 ? (
@@ -286,7 +258,7 @@ function PortfolioView({
           overCap={overCap}
           agentReady={agentReady}
           onRefreshAll={refreshAllStale}
-          running={jobStatus.state === "running"}
+          running={anyRunning}
         />
       ) : null}
 
@@ -484,7 +456,7 @@ function PositionsTable({
   refreshModel,
   agentReady,
   runOne,
-  runningTicker,
+  byTicker,
 }: {
   portfolio: Portfolio;
   weights: ReturnType<typeof computeWeights>;
@@ -493,8 +465,8 @@ function PositionsTable({
   onRemovePosition?: (ticker: string) => void;
   refreshModel: string;
   agentReady: boolean;
-  runOne: (ticker: string) => Promise<JobStatus>;
-  runningTicker: string | null;
+  runOne: (ticker: string) => Promise<void>;
+  byTicker: Record<string, TickerJobState>;
 }) {
   if (portfolio.positions.length === 0) return null;
   const decisionByTicker = new Map(
@@ -569,19 +541,13 @@ function PositionsTable({
                         View
                       </Link>
                     ) : null}
-                    <button
-                      type="button"
-                      title={
-                        agentReady
-                          ? `Re-analyze ${p.ticker} · est. ${formatUsd(estimateRunCost(refreshModel))}`
-                          : "Start agent-runner to enable live re-analyze"
-                      }
-                      disabled={!agentReady || runningTicker !== null}
-                      className="text-xs px-2 py-1 rounded-md border border-border hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    <RowAnalyzeButton
+                      ticker={p.ticker}
+                      tickerState={byTicker[p.ticker]}
+                      agentReady={agentReady}
+                      refreshModel={refreshModel}
                       onClick={() => runOne(p.ticker)}
-                    >
-                      {runningTicker === p.ticker ? "Running…" : "Re-analyze"}
-                    </button>
+                    />
                     {!readOnly && onRemovePosition ? (
                       <button
                         type="button"
@@ -660,44 +626,126 @@ function ForceRefresh({
 
 function AgentStatusBanner({
   agentReady,
-  jobStatus,
+  anyRunning,
+  runningTickers,
+  errorMessage,
+  doneTicker,
+  doneCost,
+  onDismissError,
+  onDismissDone,
 }: {
   agentReady: boolean;
-  jobStatus: JobStatus;
+  anyRunning: boolean;
+  runningTickers: string[];
+  errorMessage: string | null;
+  doneTicker: string | null;
+  doneCost: number | null;
+  onDismissError: () => void;
+  onDismissDone: () => void;
 }) {
   if (!agentReady) {
     return (
       <div className="rounded-lg border border-border bg-slate-50 px-4 py-2 text-xs text-muted">
-        Agent runner not detected on <code className="font-mono">localhost:8787</code>. Re-analyze and force-refresh are disabled. Start it with{" "}
-        <code className="font-mono">cd agent-runner &amp;&amp; uv run agent-server</code>.
+        Agent server unreachable. Re-analyze and force-refresh are disabled.
       </div>
     );
   }
-  if (jobStatus.state === "running") {
-    return (
-      <div className="rounded-lg border border-accent/30 bg-accent/5 px-4 py-2 text-sm">
-        Running {jobStatus.ticker} (job {jobStatus.jobId.slice(0, 6)}) · est.{" "}
-        <span className="font-mono">{formatUsd(jobStatus.estimated)}</span>
-      </div>
-    );
+  return (
+    <div className="space-y-2">
+      {anyRunning ? (
+        <div className="rounded-lg border border-accent/30 bg-accent/5 px-4 py-2 text-sm flex items-center gap-2">
+          <span className="inline-block h-2 w-2 rounded-full bg-accent animate-pulse" aria-hidden />
+          Running {runningTickers.length === 1 ? runningTickers[0] : `${runningTickers.length} tickers`}
+          {runningTickers.length > 1 ? ` (${runningTickers.join(", ")})` : null} ·
+          {" "}stays running if you navigate away
+        </div>
+      ) : null}
+      {errorMessage ? (
+        <div className="rounded-lg border border-sell/30 bg-sell/5 px-4 py-2 text-sm text-sell flex items-center justify-between gap-3">
+          <span>{errorMessage}</span>
+          <button
+            type="button"
+            onClick={onDismissError}
+            className="text-xs text-muted hover:text-foreground"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+      {doneTicker && !anyRunning ? (
+        <div className="rounded-lg border border-buy/30 bg-buy/5 px-4 py-2 text-sm flex items-center justify-between gap-3">
+          <span>
+            {doneTicker} re-analyzed
+            {doneCost !== null ? ` · cost ${formatUsd(doneCost)}` : null}.
+            Reload the page or click again to pick up the new run.
+          </span>
+          <button
+            type="button"
+            onClick={onDismissDone}
+            className="text-xs text-muted hover:text-foreground"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RowAnalyzeButton({
+  ticker,
+  tickerState,
+  agentReady,
+  refreshModel,
+  onClick,
+}: {
+  ticker: string;
+  tickerState: TickerJobState | undefined;
+  agentReady: boolean;
+  refreshModel: string;
+  onClick: () => void;
+}) {
+  const isRunning = tickerState?.state === "running";
+  const isError = tickerState?.state === "error";
+  const isDone = tickerState?.state === "done";
+
+  let label: string;
+  let title: string;
+  if (isRunning) {
+    label = "Running…";
+    title = `Run started ${tickerState!.startedAt ? "around " + new Date(tickerState!.startedAt).toLocaleTimeString() : ""}; safe to navigate away`;
+  } else if (isError) {
+    label = "Retry";
+    title = (tickerState as Extract<TickerJobState, { state: "error" }>).message;
+  } else if (isDone) {
+    label = "Re-run";
+    title = `Last run finished. Reload page to see report.`;
+  } else {
+    label = "Re-analyze";
+    title = agentReady
+      ? `Re-analyze ${ticker} · est. ${formatUsd(estimateRunCost(refreshModel))}`
+      : "Agent server offline";
   }
-  if (jobStatus.state === "done") {
-    return (
-      <div className="rounded-lg border border-buy/30 bg-buy/5 px-4 py-2 text-sm">
-        {jobStatus.ticker} re-analyzed · cost{" "}
-        <span className="font-mono">{formatUsd(jobStatus.cost)}</span>. Reload
-        the page to pick up the new run.
-      </div>
-    );
-  }
-  if (jobStatus.state === "error") {
-    return (
-      <div className="rounded-lg border border-sell/30 bg-sell/5 px-4 py-2 text-sm text-sell">
-        {jobStatus.message}
-      </div>
-    );
-  }
-  return null;
+
+  return (
+    <button
+      type="button"
+      title={title}
+      disabled={!agentReady || isRunning}
+      onClick={onClick}
+      className={`text-xs px-2 py-1 rounded-md border ${
+        isRunning
+          ? "border-accent/40 bg-accent/5 text-accent cursor-not-allowed"
+          : isError
+            ? "border-sell/40 bg-sell/5 text-sell hover:bg-sell/10"
+            : "border-border hover:bg-slate-50"
+      } disabled:opacity-40 disabled:cursor-not-allowed`}
+    >
+      {label}
+    </button>
+  );
 }
 
 function AddPosition({

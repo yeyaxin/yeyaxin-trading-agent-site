@@ -189,6 +189,16 @@ def execute(req: RunRequest) -> RunResult:
     out_path = out_dir / f"{run.id}.json"
     out_path.write_text(json.dumps(run.model_dump(exclude_none=True), indent=2))
 
+    # Publish to S3 if configured (production). Local dev runs without
+    # RUN_JSON_BUCKET set will skip this.
+    try:
+        from .s3_publisher import publish_run
+
+        publish_run(run)
+    except Exception as e:  # noqa: BLE001
+        # Don't fail the run if S3 publish fails; the local file is still written.
+        print(f"warning: S3 publish failed: {e}")
+
     _commit_spend(tally.cost_usd)
 
     return RunResult(

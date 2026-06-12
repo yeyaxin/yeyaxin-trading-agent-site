@@ -22,10 +22,14 @@ export type StartResp = { jobId: string; estimatedCostUsd: number };
 export type Job = {
   jobId: string;
   state: "queued" | "running" | "done" | "error";
+  kind?: string | null;
+  ticker?: string | null;
+  portfolioId?: string | null;
   error: string | null;
   runId: string | null;
   decision: string | null;
   actualCostUsd: number | null;
+  createdAt?: string | null;
 };
 
 export class AgentServerError extends Error {
@@ -77,6 +81,7 @@ export async function startRun(input: {
   asOfDate?: string;
   model?: "haiku" | "sonnet";
   depth?: number;
+  portfolioId?: string;
 }): Promise<StartResp> {
   const r = await fetch(`${agentBaseUrl}/run`, {
     method: "POST",
@@ -86,6 +91,7 @@ export async function startRun(input: {
       asOfDate: input.asOfDate,
       model: input.model ?? "haiku",
       depth: input.depth ?? 1,
+      portfolioId: input.portfolioId,
     }),
   });
   if (!r.ok) {
@@ -121,6 +127,21 @@ export async function fetchJob(jobId: string, signal?: AbortSignal): Promise<Job
   });
   if (!r.ok) throw new AgentServerError(r.status, `job ${jobId}: ${r.status}`);
   return (await r.json()) as Job;
+}
+
+export async function listJobs(filter: {
+  state?: "queued" | "running" | "done" | "error";
+  portfolioId?: string;
+}): Promise<Job[]> {
+  const params = new URLSearchParams();
+  if (filter.state) params.set("state", filter.state);
+  if (filter.portfolioId) params.set("portfolioId", filter.portfolioId);
+  const r = await fetch(`${agentBaseUrl}/jobs?${params}`, {
+    headers: { ...authHeaders() },
+  });
+  if (!r.ok) throw new AgentServerError(r.status, `list jobs: ${r.status}`);
+  const data = (await r.json()) as { jobs: Job[] };
+  return data.jobs;
 }
 
 export async function pollJob(
