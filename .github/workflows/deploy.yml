@@ -32,20 +32,21 @@ jobs:
 
       - run: npm ci
 
-      - name: Build (static export)
+      - name: Write .env.local for Next.js
         env:
           NEXT_PUBLIC_FINNHUB_API_KEY: ${{ secrets.NEXT_PUBLIC_FINNHUB_API_KEY }}
         run: |
-          # Belt-and-suspenders: write .env.local so Next.js's env-loading
-          # is identical to local dev. Keeps build deterministic regardless
-          # of how Turbopack chooses to source NEXT_PUBLIC_* vars.
           if [ -n "$NEXT_PUBLIC_FINNHUB_API_KEY" ]; then
-            echo "NEXT_PUBLIC_FINNHUB_API_KEY=$NEXT_PUBLIC_FINNHUB_API_KEY" > .env.local
+            printf 'NEXT_PUBLIC_FINNHUB_API_KEY=%s\n' "$NEXT_PUBLIC_FINNHUB_API_KEY" > .env.local
             echo "wrote .env.local with finnhub key (length=${#NEXT_PUBLIC_FINNHUB_API_KEY})"
           else
             echo "WARNING: NEXT_PUBLIC_FINNHUB_API_KEY secret is empty; ticker search will be limited to fallback list"
           fi
-          npm run build
+
+      - name: Build (static export)
+        env:
+          NEXT_PUBLIC_FINNHUB_API_KEY: ${{ secrets.NEXT_PUBLIC_FINNHUB_API_KEY }}
+        run: npm run build
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
