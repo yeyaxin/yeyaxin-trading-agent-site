@@ -1,12 +1,131 @@
 #!/usr/bin/env node
-// Scans src/data/runs/*.json and writes src/data/runs/_index.ts so the site
-// auto-discovers any run JSON the agent-runner emits. Run before `next build`.
+// Scans src/data/runs/*.json AND fetches any newer runs from S3 (via the
+// public CDN at https://yeyaxin.com/trade/runs/_index.json), then writes
+// src/data/runs/_index.ts so the site bundles every available run.
+//
+// Run before `next build`. CI does this automatically. For local dev,
+// `npm run generate:runs-index` will also re-pull.
+//
+// Behavior:
+// - In CI: fetch the manifest, download missing runs into src/data/runs/.
+//   Also fetches the demo synthesis from /portfolios/.
+// - Idempotent: existing local files are preserved; remote fetches only fill
+//   gaps.
+// - Set SKIP_REMOTE_RUNS=1 to bypass network (offline dev).
 
-import { readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const RUNS_DIR = join(process.cwd(), "src", "data", "runs");
+const ROOT = process.cwd();
+const RUNS_DIR = join(ROOT, "src", "data", "runs");
+const PORTFOLIOS_DIR = join(ROOT, "src", "data", "portfolios");
 const OUT = join(RUNS_DIR, "_index.ts");
+
+const REMOTE_BASE =
+  process.env.RUNS_CDN_BASE || "https://yeyaxin.com/trade";
+const SKIP_REMOTE = process.env.SKIP_REMOTE_RUNS === "1";
+
+// CloudFront with OAC returns 403 for missing objects, not 404. Treat both
+// as "object doesn't exist" when okIfMissing is set.
+function isMissing(status) {
+  return status === 404 || status === 403;
+}
+
+async function fetchJson(url, { okIfMissing = false } = {}) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (isMissing(res.status) && okIfMissing) return null;
+  if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
+  return res.json();
+}
+
+async function fetchText(url, { okIfMissing = false } = {}) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (isMissing(res.status) && okIfMissing) return null;
+  if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
+  return res.text();
+}
+
+function localRunFile(id) {
+  return join(RUNS_DIR, `${id}.json`);
+}
+
+async function pullRemoteRuns() {
+  if (SKIP_REMOTE) {
+    console.log("SKIP_REMOTE_RUNS=1; skipping S3 fetch");
+    return { pulled: 0, total: 0 };
+  }
+
+  const manifestUrl = `${REMOTE_BASE}/runs/_index.json`;
+  let manifest;
+  try {
+    manifest = await fetchJson(manifestUrl, { okIfMissing: true });
+  } catch (e) {
+    console.warn(`runs manifest fetch failed (${e.message}); proceeding with local files only`);
+    return { pulled: 0, total: 0 };
+  }
+  if (!manifest) {
+    console.log("no remote manifest yet (S3 has no runs/_index.json)");
+    return { pulled: 0, total: 0 };
+  }
+
+  const remoteRuns = Array.isArray(manifest.runs) ? manifest.runs : [];
+  let pulled = 0;
+  for (const r of remoteRuns) {
+    const id = r.id;
+    if (!id) continue;
+    const localPath = localRunFile(id);
+    if (existsSync(localPath)) continue;
+    try {
+      const body = await fetchText(`${REMOTE_BASE}/runs/${encodeURIComponent(id)}.json`);
+      writeFileSync(localPath, body);
+      pulled++;
+      console.log(`  pulled ${id}.json`);
+    } catch (e) {
+      console.warn(`  skip ${id}: ${e.message}`);
+    }
+  }
+  return { pulled, total: remoteRuns.length };
+}
+
+async function pullRemoteSyntheses() {
+  if (SKIP_REMOTE) return { pulled: 0 };
+
+  // We don't have a portfolios index yet; just attempt the demo synthesis.
+  // Other portfolios are user-private and live in localStorage.
+  const demoUrl = `${REMOTE_BASE}/portfolios/demo-synthesis.json`;
+  const demoLocal = join(PORTFOLIOS_DIR, "demo-synthesis.json");
+  try {
+    const body = await fetchText(demoUrl, { okIfMissing: true });
+    if (body) {
+      const remote = JSON.parse(body);
+      let writeIt = true;
+      if (existsSync(demoLocal)) {
+        try {
+          const local = JSON.parse(readFileSync(demoLocal, "utf-8"));
+          if (local.createdAt && remote.createdAt && remote.createdAt <= local.createdAt) {
+            writeIt = false;
+          }
+        } catch {
+          /* corrupt local — overwrite */
+        }
+      }
+      if (writeIt) {
+        writeFileSync(demoLocal, body);
+        console.log("  pulled portfolios/demo-synthesis.json");
+        return { pulled: 1 };
+      }
+    }
+  } catch (e) {
+    console.warn(`  skip demo synthesis: ${e.message}`);
+  }
+  return { pulled: 0 };
+}
+
+const { pulled, total } = await pullRemoteRuns();
+const synthRes = await pullRemoteSyntheses();
+console.log(
+  `remote runs: ${pulled} pulled / ${total} in manifest; synthesis pulled: ${synthRes.pulled}`,
+);
 
 const files = readdirSync(RUNS_DIR)
   .filter((f) => f.endsWith(".json") && !f.startsWith("_"))
