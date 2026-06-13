@@ -1,33 +1,49 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getPassword, setPassword } from "@/lib/agentClient";
+import { REQUEST_PASSWORD_EVENT_NAME, setPassword } from "@/lib/agentClient";
 
-type Props = {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (password: string) => void;
+type Pending = {
+  reason: "missing" | "rejected";
+  resolve: (password: string | null) => void;
 };
 
-export function PasswordPrompt({ open, onClose, onSubmit }: Props) {
+/**
+ * Single, app-wide password modal. Mount once at the layout root.
+ * Listens for `requestPassword()` events dispatched by agentClient and
+ * resolves the awaiting promise when the user submits or cancels.
+ */
+export function PasswordPromptHost() {
+  const [pending, setPending] = useState<Pending | null>(null);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (open) {
-      setDraft(getPassword() ?? "");
+    function onRequest(e: Event) {
+      const ev = e as CustomEvent<Pending>;
+      setDraft("");
+      setPending(ev.detail);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [open]);
+    window.addEventListener(REQUEST_PASSWORD_EVENT_NAME, onRequest);
+    return () =>
+      window.removeEventListener(REQUEST_PASSWORD_EVENT_NAME, onRequest);
+  }, []);
 
-  if (!open) return null;
+  if (!pending) return null;
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = draft.trim();
     if (!trimmed) return;
     setPassword(trimmed);
-    onSubmit(trimmed);
+    pending?.resolve(trimmed);
+    setPending(null);
+  }
+
+  function cancel() {
+    pending?.resolve(null);
+    setPending(null);
   }
 
   return (
@@ -36,10 +52,15 @@ export function PasswordPrompt({ open, onClose, onSubmit }: Props) {
         onSubmit={submit}
         className="w-full max-w-sm rounded-xl border border-border bg-white p-5 space-y-3 shadow-lg"
       >
-        <h2 className="text-lg font-semibold">Password required</h2>
+        <h2 className="text-lg font-semibold">
+          {pending.reason === "rejected"
+            ? "Password not accepted"
+            : "Password required"}
+        </h2>
         <p className="text-sm text-muted">
-          Live agent runs are gated by a shared password. Ask the site owner if
-          you don&apos;t have it. Cached reports are visible without a password.
+          {pending.reason === "rejected"
+            ? "The previous password was rejected. Enter the current shared password to continue."
+            : "Live agent runs and portfolio edits are gated by a shared password. Cached reports are visible without one."}
         </p>
         <input
           ref={inputRef}
@@ -53,7 +74,7 @@ export function PasswordPrompt({ open, onClose, onSubmit }: Props) {
         <div className="flex justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={cancel}
             className="h-9 px-3 rounded-md border border-border hover:bg-slate-50 text-sm"
           >
             Cancel
@@ -63,10 +84,23 @@ export function PasswordPrompt({ open, onClose, onSubmit }: Props) {
             disabled={!draft.trim()}
             className="h-9 px-3 rounded-md bg-accent text-accent-fg font-medium hover:opacity-90 disabled:opacity-50 text-sm"
           >
-            Save & continue
+            Continue
           </button>
         </div>
       </form>
     </div>
   );
 }
+
+// Legacy alias for any callers still importing PasswordPrompt; new code should
+// not need to mount its own modal.
+export const PasswordPrompt = (props: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (password: string) => void;
+}) => {
+  // The new architecture renders the modal centrally via PasswordPromptHost.
+  // This shim exists only so older imports don't crash; they're now no-ops.
+  void props;
+  return null;
+};

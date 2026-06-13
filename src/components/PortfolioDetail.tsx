@@ -13,7 +13,6 @@ import { TickerSearch } from "@/components/TickerSearch";
 import { DecisionBadge } from "@/components/DecisionBadge";
 import { Disclaimer } from "@/components/Disclaimer";
 import { Markdown } from "@/components/Markdown";
-import { PasswordPrompt } from "@/components/PasswordGate";
 import {
   estimateRunCost,
   estimateSynthesisCost,
@@ -21,7 +20,7 @@ import {
   MONTHLY_CAP_USD,
 } from "@/lib/cost";
 import { tickerToRunId } from "@/lib/runs";
-import { useAgentHealth, getPassword } from "@/lib/agentClient";
+import { useAgentHealth } from "@/lib/agentClient";
 import {
   useJobTracker,
   SYNTHESIS_KEY,
@@ -122,7 +121,6 @@ function PortfolioView({
   onDelete,
 }: ViewProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [pendingAction, setPendingAction] = useState<null | (() => void)>(null);
   const { health } = useAgentHealth();
   const weights = useMemo(() => computeWeights(portfolio), [portfolio]);
   const stalePositions = portfolio.positions.filter((p) =>
@@ -139,29 +137,14 @@ function PortfolioView({
   const { byTicker, startTickerRun, startSynthesisRun, clearTickerStatus } =
     useJobTracker(portfolio.id, agentReady);
 
-  function ensurePassword(then: () => void): boolean {
-    if (getPassword()) return true;
-    setPendingAction(() => then);
-    return false;
-  }
-
+  // agentClient handles password prompts and 401 retries via the global
+  // PasswordPromptHost. These callbacks just call through.
   async function runOne(ticker: string): Promise<void> {
-    if (!agentReady) {
-      return;
-    }
-    if (!ensurePassword(() => void runOne(ticker))) return;
-    const result = await startTickerRun(ticker, "haiku");
-    if (!result.ok && result.status === 401) {
-      // password rejected — clear and re-prompt
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("yeyaxin.tradeAgentPassword.v1");
-      }
-      setPendingAction(() => () => void runOne(ticker));
-    }
+    if (!agentReady) return;
+    await startTickerRun(ticker, "haiku");
   }
 
   async function refreshAllStale(): Promise<void> {
-    if (!ensurePassword(() => void refreshAllStale())) return;
     for (const p of stalePositions) {
       await runOne(p.ticker);
       const st = byTicker[p.ticker];
@@ -172,14 +155,7 @@ function PortfolioView({
   async function synthesizeNow(): Promise<void> {
     if (!agentReady) return;
     if (portfolio.positions.length === 0) return;
-    if (!ensurePassword(() => void synthesizeNow())) return;
-    const result = await startSynthesisRun(portfolio, "haiku");
-    if (!result.ok && result.status === 401) {
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("yeyaxin.tradeAgentPassword.v1");
-      }
-      setPendingAction(() => () => void synthesizeNow());
-    }
+    await startSynthesisRun(portfolio, "haiku");
   }
 
   // Aggregate banner state from all tickers
@@ -207,16 +183,6 @@ function PortfolioView({
       />
 
       <Disclaimer />
-
-      <PasswordPrompt
-        open={pendingAction !== null}
-        onClose={() => setPendingAction(null)}
-        onSubmit={() => {
-          const action = pendingAction;
-          setPendingAction(null);
-          if (action) action();
-        }}
-      />
 
       <AgentStatusBanner
         agentReady={agentReady}

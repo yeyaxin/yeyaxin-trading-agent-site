@@ -3,27 +3,19 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePortfolios, MAX_PORTFOLIOS } from "@/lib/portfolio";
-import { getPassword } from "@/lib/agentClient";
 import { Disclaimer } from "@/components/Disclaimer";
-import { PasswordPrompt } from "@/components/PasswordGate";
 
 export default function PortfolioIndex() {
   const { hydrated, loadError, list, freeSlot, create } = usePortfolios();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const [pendingAction, setPendingAction] = useState<null | (() => void)>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-
-  function ensurePassword(then: () => void): boolean {
-    if (getPassword()) return true;
-    setPendingAction(() => then);
-    return false;
-  }
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!ensurePassword(() => void onCreate(e))) return;
     setSubmitError(null);
+    // agentClient triggers the global password modal automatically when
+    // needed. No local password gate.
     const result = await create(name);
     if (result.error) {
       setSubmitError(result.error);
@@ -35,16 +27,6 @@ export default function PortfolioIndex() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-12 space-y-8">
-      <PasswordPrompt
-        open={pendingAction !== null}
-        onClose={() => setPendingAction(null)}
-        onSubmit={() => {
-          const action = pendingAction;
-          setPendingAction(null);
-          if (action) action();
-        }}
-      />
-
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold tracking-tight">Portfolios</h1>
         <p className="text-muted">

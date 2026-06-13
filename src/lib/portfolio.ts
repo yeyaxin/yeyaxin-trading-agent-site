@@ -9,8 +9,9 @@ import {
 } from "./portfolio-config";
 import {
   AgentServerError,
-  agentBaseUrl,
-  authHeaders,
+  listPortfolios as listPortfoliosClient,
+  putPortfolio as putPortfolioClient,
+  deletePortfolio as deletePortfolioClient,
 } from "./agentClient";
 
 export {
@@ -37,17 +38,9 @@ function newPortfolio(id: string, name: string): Portfolio {
 }
 
 async function fetchAllFromServer(): Promise<Store> {
-  const headers = authHeaders();
-  // Without a password set, the server returns 401. Treat that as "empty"
-  // (UX decision: show empty slots + a password prompt on first write).
-  if (!("Authorization" in headers)) return EMPTY_STORE;
-
-  const r = await fetch(`${agentBaseUrl}/portfolios`, { headers });
-  if (r.status === 401) return EMPTY_STORE;
-  if (!r.ok) throw new AgentServerError(r.status, `list portfolios: ${r.status}`);
-  const data = (await r.json()) as { portfolios: Portfolio[] };
+  const items = (await listPortfoliosClient()) as Portfolio[];
   const out: Store = { ...EMPTY_STORE };
-  for (const p of data.portfolios ?? []) {
+  for (const p of items) {
     if (p.id === "p1" || p.id === "p2" || p.id === "p3") {
       out[p.id] = p;
     }
@@ -56,26 +49,15 @@ async function fetchAllFromServer(): Promise<Store> {
 }
 
 async function putPortfolio(p: Portfolio): Promise<void> {
-  const r = await fetch(`${agentBaseUrl}/portfolios/${p.id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(p),
-  });
-  if (!r.ok) {
-    const msg = await r.text();
-    throw new AgentServerError(r.status, msg || `put portfolio: ${r.status}`);
-  }
+  await putPortfolioClient(p.id, p);
 }
 
 async function deletePortfolio(slotId: PortfolioSlotId): Promise<void> {
-  const r = await fetch(`${agentBaseUrl}/portfolios/${slotId}`, {
-    method: "DELETE",
-    headers: { ...authHeaders() },
-  });
-  if (!r.ok && r.status !== 404) {
-    throw new AgentServerError(r.status, `delete portfolio: ${r.status}`);
-  }
+  await deletePortfolioClient(slotId);
 }
+
+// Re-exported so existing call sites that imported from this module continue to work.
+export { AgentServerError };
 
 export type PortfolioMutator = {
   store: Store;
