@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   usePortfolios,
   computeWeights,
@@ -239,13 +239,6 @@ function PortfolioView({
         }}
       />
 
-      <SummaryStrip
-        weights={weights}
-        cashUsd={portfolio.cashUsd}
-        positionCount={portfolio.positions.length}
-        synthesizedAt={synthesis?.createdAt}
-      />
-
       {!readOnly ? (
         <SynthesizeActionPanel
           portfolio={portfolio}
@@ -259,11 +252,21 @@ function PortfolioView({
         />
       ) : null}
 
-      {synthesis ? (
-        <SynthesisPanels synthesis={synthesis} />
-      ) : (
-        <EmptySynthesis hasPositions={portfolio.positions.length > 0} />
-      )}
+      <SummaryStrip
+        weights={weights}
+        cashUsd={portfolio.cashUsd}
+        positionCount={portfolio.positions.length}
+        synthesizedAt={synthesis?.createdAt}
+      />
+
+      {!readOnly ? (
+        <CashCard
+          cashUsd={portfolio.cashUsd}
+          onSave={onSetCash}
+        />
+      ) : null}
+
+      {synthesis ? <SynthesisPanels synthesis={synthesis} /> : null}
 
       <PositionsTable
         portfolio={portfolio}
@@ -294,7 +297,6 @@ function PortfolioView({
         <AddPosition
           portfolio={portfolio}
           onAddPosition={onAddPosition}
-          onSetCash={onSetCash}
         />
       ) : null}
     </div>
@@ -450,27 +452,69 @@ function SynthesisPanels({ synthesis }: { synthesis: PortfolioSynthesis }) {
   );
 }
 
-function EmptySynthesis({ hasPositions }: { hasPositions: boolean }) {
+function CashCard({
+  cashUsd,
+  onSave,
+}: {
+  cashUsd: number;
+  onSave?: (cashUsd: number) => Promise<void> | void;
+}) {
+  const [draft, setDraft] = useState(String(cashUsd));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Sync external updates (e.g., from another tab) into the input.
+  useEffect(() => {
+    setDraft(String(cashUsd));
+  }, [cashUsd]);
+
+  const dirty = draft.trim() !== String(cashUsd);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const n = Number(draft);
+    if (!Number.isFinite(n) || n < 0) {
+      setError("Enter a non-negative number");
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await onSave?.(n);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <section className="rounded-xl border border-dashed border-border p-6 text-center">
-      {hasPositions ? (
-        <>
-          <h2 className="font-medium">No synthesis yet</h2>
-          <p className="text-sm text-muted mt-1">
-            Re-analyze each position first, then click Synthesize portfolio
-            above. Synthesis reads each ticker&apos;s analysis and produces
-            book-level commentary, factor exposure, and sizing-aware actions.
-          </p>
-        </>
-      ) : (
-        <>
-          <h2 className="font-medium">Add positions to get started</h2>
-          <p className="text-sm text-muted mt-1">
-            Search a ticker below and enter share count. After you have at
-            least one analyzed position, you can synthesize the book.
-          </p>
-        </>
-      )}
+    <section className="rounded-xl border border-border bg-white p-5">
+      <form onSubmit={save} className="space-y-2">
+        <div className="flex items-end gap-3 flex-wrap">
+          <label className="block flex-1 min-w-[200px] space-y-1">
+            <span className="text-sm font-medium">Cash on hand (USD)</span>
+            <span className="block text-xs text-muted">
+              Un-invested cash you have available in this account. Counts toward
+              NAV and weights.
+            </span>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              className="w-full font-mono rounded-md border border-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={!dirty || saving}
+            className="h-10 px-4 rounded-md border border-accent text-accent text-sm font-medium hover:bg-accent hover:text-accent-fg disabled:opacity-50 disabled:cursor-not-allowed transition"
+          >
+            {saving ? "Saving…" : dirty ? "Save" : "Saved"}
+          </button>
+        </div>
+        {error ? <p className="text-sm text-sell">{error}</p> : null}
+      </form>
     </section>
   );
 }
@@ -522,21 +566,24 @@ function SynthesizeActionPanel({
   }
 
   return (
-    <section className="rounded-xl border border-border bg-white p-5 space-y-3">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <h2 className="font-medium">Portfolio synthesis</h2>
-          <p className="text-sm text-muted mt-1">
+    <section className="rounded-xl border-2 border-accent/30 bg-accent/5 p-6 space-y-4">
+      <div className="flex items-start justify-between gap-6 flex-wrap">
+        <div className="flex-1 min-w-[240px]">
+          <h2 className="text-xl font-semibold tracking-tight">
+            Portfolio synthesis
+          </h2>
+          <p className="text-sm text-muted mt-1.5">
             Reads the latest analysis for each position and produces
-            book-level commentary, factor exposure, and sizing-aware
-            actions. Re-analyze positions first if any are stale.
+            book-level commentary, factor exposure, and sizing-aware actions
+            (BUY MORE / HOLD / TRIM / EXIT). Re-analyze positions first if
+            any are stale.
           </p>
         </div>
         <button
           type="button"
           onClick={onSynthesize}
           disabled={disabled}
-          className="h-11 px-5 rounded-lg bg-accent text-accent-fg font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+          className="h-12 px-6 rounded-lg bg-accent text-accent-fg text-base font-semibold shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
         >
           {buttonLabel}
         </button>
@@ -892,20 +939,18 @@ function RowAnalyzeButton({
 function AddPosition({
   portfolio,
   onAddPosition,
-  onSetCash,
 }: {
   portfolio: Portfolio;
   onAddPosition?: (pos: Position) => Promise<string | null> | string | null;
-  onSetCash?: (cashUsd: number) => Promise<void> | void;
 }) {
   const [pendingTicker, setPendingTicker] = useState<{
     symbol: string;
     description: string;
+    quotePrice: number | null;
   } | null>(null);
   const [shares, setShares] = useState("");
   const [avgCost, setAvgCost] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [cashDraft, setCashDraft] = useState(String(portfolio.cashUsd));
   const [submitting, setSubmitting] = useState(false);
 
   async function add(e: React.FormEvent) {
@@ -919,11 +964,25 @@ function AddPosition({
       setError("Enter a positive share count");
       return;
     }
-    const costNum = avgCost.trim() ? Number(avgCost) : undefined;
-    if (avgCost.trim() && (!Number.isFinite(costNum) || (costNum ?? 0) <= 0)) {
-      setError("Avg cost must be a positive number, or leave blank");
+
+    let costNum: number | undefined;
+    if (avgCost.trim()) {
+      const parsed = Number(avgCost);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setError("Avg cost must be a positive number, or leave blank");
+        return;
+      }
+      costNum = parsed;
+    } else if (pendingTicker.quotePrice && pendingTicker.quotePrice > 0) {
+      // Fallback: use the live market price captured when the ticker was picked.
+      costNum = pendingTicker.quotePrice;
+    } else {
+      setError(
+        "Avg cost is blank and we couldn't fetch a market price. Enter a value manually.",
+      );
       return;
     }
+
     setSubmitting(true);
     setError(null);
     try {
@@ -944,27 +1003,47 @@ function AddPosition({
     }
   }
 
+  const willUseLivePrice =
+    pendingTicker !== null &&
+    pendingTicker.quotePrice !== null &&
+    avgCost.trim().length === 0;
+
   return (
     <section className="rounded-xl border border-border bg-white p-5 space-y-4">
       <h2 className="font-medium">Manage positions</h2>
+      <p className="text-sm text-muted">
+        Search a ticker and tell the agent how many shares you own and what
+        you paid. The avg cost lets later analyses compute unrealized P&amp;L.
+        {portfolio.positions.length === 0
+          ? " Add at least one position to enable Synthesize portfolio above."
+          : null}
+      </p>
 
       <form onSubmit={add} className="space-y-3">
         {!pendingTicker ? (
           <TickerSearch
-            onSelect={(hit) =>
+            onSelect={(hit, quote) =>
               setPendingTicker({
                 symbol: hit.symbol,
                 description: hit.description,
+                quotePrice: quote?.price ?? null,
               })
             }
           />
         ) : (
           <div className="flex items-center justify-between rounded-md border border-border bg-slate-50 px-3 py-2">
-            <span>
+            <span className="flex items-center gap-3 min-w-0">
               <span className="font-mono font-semibold">
                 {pendingTicker.symbol}
               </span>
-              <span className="text-muted ml-2">{pendingTicker.description}</span>
+              <span className="text-muted truncate">
+                {pendingTicker.description}
+              </span>
+              {pendingTicker.quotePrice !== null ? (
+                <span className="font-mono text-sm text-muted flex-shrink-0">
+                  ${pendingTicker.quotePrice.toFixed(2)} live
+                </span>
+              ) : null}
             </span>
             <button
               type="button"
@@ -998,8 +1077,18 @@ function AddPosition({
               value={avgCost}
               onChange={(e) => setAvgCost(e.target.value)}
               className="w-full rounded-md border border-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-              placeholder="—"
+              placeholder={
+                pendingTicker?.quotePrice
+                  ? `default: $${pendingTicker.quotePrice.toFixed(2)}`
+                  : "—"
+              }
             />
+            {willUseLivePrice ? (
+              <span className="block text-xs text-hold">
+                Leaving this blank will record the current market price ($
+                {pendingTicker!.quotePrice!.toFixed(2)}) as your avg cost.
+              </span>
+            ) : null}
           </label>
         </div>
 
@@ -1017,32 +1106,6 @@ function AddPosition({
               : "Pick a ticker to add"}
         </button>
       </form>
-
-      <div className="border-t border-border pt-4">
-        <label className="block space-y-1 max-w-xs">
-          <span className="text-sm font-medium">Cash (USD)</span>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              step="any"
-              min="0"
-              value={cashDraft}
-              onChange={(e) => setCashDraft(e.target.value)}
-              className="w-full rounded-md border border-border px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                const n = Number(cashDraft);
-                if (Number.isFinite(n) && n >= 0) onSetCash?.(n);
-              }}
-              className="h-10 px-3 rounded-md border border-border hover:bg-slate-50"
-            >
-              Save
-            </button>
-          </div>
-        </label>
-      </div>
     </section>
   );
 }

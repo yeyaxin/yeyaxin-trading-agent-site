@@ -1,16 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { hasFinnhubKey, searchSymbols, type SymbolHit } from "@/lib/finnhub";
+import {
+  getQuote,
+  hasFinnhubKey,
+  searchSymbols,
+  type Quote,
+  type SymbolHit,
+} from "@/lib/finnhub";
 
 type Props = {
-  onSelect: (hit: SymbolHit) => void;
+  onSelect: (hit: SymbolHit, quote: Quote | null) => void;
   placeholder?: string;
 };
+
+// Module-level cache so quotes survive remounts/re-renders within a session.
+const QUOTE_CACHE = new Map<string, Quote | null>();
 
 export function TickerSearch({ onSelect, placeholder = "Search ticker or company..." }: Props) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SymbolHit[]>([]);
+  const [quotes, setQuotes] = useState<Record<string, Quote | null>>({});
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +56,39 @@ export function TickerSearch({ onSelect, placeholder = "Search ticker or company
     };
   }, [debouncedQ]);
 
+  // Fetch quotes for the currently visible hits. Cap at the top 8 to avoid
+  // burning rate limits on every keystroke; the dropdown is short anyway.
+  useEffect(() => {
+    if (!hasFinnhubKey() || hits.length === 0) return;
+    let cancelled = false;
+    const targets = hits.slice(0, 8).map((h) => h.symbol);
+    void Promise.all(
+      targets.map(async (sym) => {
+        if (QUOTE_CACHE.has(sym)) {
+          return [sym, QUOTE_CACHE.get(sym) ?? null] as const;
+        }
+        try {
+          const q = await getQuote(sym);
+          QUOTE_CACHE.set(sym, q);
+          return [sym, q] as const;
+        } catch {
+          QUOTE_CACHE.set(sym, null);
+          return [sym, null] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setQuotes((prev) => {
+        const next = { ...prev };
+        for (const [sym, q] of entries) next[sym] = q;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hits]);
+
   useEffect(() => {
     function onClick(e: MouseEvent) {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
@@ -57,7 +100,7 @@ export function TickerSearch({ onSelect, placeholder = "Search ticker or company
   }, []);
 
   function pick(hit: SymbolHit) {
-    onSelect(hit);
+    onSelect(hit, quotes[hit.symbol] ?? null);
     setQ("");
     setHits([]);
     setOpen(false);
@@ -110,28 +153,46 @@ export function TickerSearch({ onSelect, placeholder = "Search ticker or company
             <div className="px-3 py-2 text-sm text-muted">No matches</div>
           ) : (
             <ul className="max-h-72 overflow-auto">
-              {hits.map((h, i) => (
-                <li key={`${h.symbol}-${i}`}>
-                  <button
-                    type="button"
-                    onMouseEnter={() => setActiveIdx(i)}
-                    onClick={() => pick(h)}
-                    className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-3 ${
-                      i === activeIdx ? "bg-slate-100" : "hover:bg-slate-50"
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className="font-mono font-semibold">{h.symbol}</span>
-                      <span className="text-muted">{h.description}</span>
-                    </span>
-                    {h.type ? (
-                      <span className="text-[10px] uppercase tracking-wider text-muted">
-                        {h.type}
+              {hits.map((h, i) => {
+                const quote = quotes[h.symbol];
+                return (
+                  <li key={`${h.symbol}-${i}`}>
+                    <button
+                      type="button"
+                      onMouseEnter={() => setActiveIdx(i)}
+                      onClick={() => pick(h)}
+                      className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-3 ${
+                        i === activeIdx ? "bg-slate-100" : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono font-semibold">{h.symbol}</span>
+                        <span className="text-muted truncate">{h.description}</span>
                       </span>
-                    ) : null}
-                  </button>
-                </li>
-              ))}
+                      <span className="flex items-center gap-2 flex-shrink-0">
+                        {quote ? (
+                          <>
+                            <span className="font-mono">${quote.price.toFixed(2)}</span>
+                            <span
+                              className={`font-mono text-xs ${
+                                quote.changePct >= 0 ? "text-buy" : "text-sell"
+                              }`}
+                            >
+                              {quote.changePct >= 0 ? "+" : ""}
+                              {quote.changePct.toFixed(2)}%
+                            </span>
+                          </>
+                        ) : null}
+                        {h.type ? (
+                          <span className="text-[10px] uppercase tracking-wider text-muted">
+                            {h.type}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
