@@ -220,7 +220,7 @@ _origins = _default_origins + ([o.strip() for o in _extra.split(",") if o.strip(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
