@@ -61,7 +61,7 @@ export function setPassword(password: string | null): void {
   }
 }
 
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
   const p = getPassword();
   return p ? { Authorization: `Bearer ${p}` } : {};
 }

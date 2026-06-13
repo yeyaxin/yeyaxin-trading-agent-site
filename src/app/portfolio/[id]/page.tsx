@@ -1,8 +1,8 @@
 import { PortfolioDetail } from "@/components/PortfolioDetail";
-import { PORTFOLIO_SLOT_IDS, DEMO_PORTFOLIO_ID } from "@/lib/portfolio-config";
+import { PORTFOLIO_SLOT_IDS } from "@/lib/portfolio-config";
 
 export function generateStaticParams() {
-  return [{ id: DEMO_PORTFOLIO_ID }, ...PORTFOLIO_SLOT_IDS.map((id) => ({ id }))];
+  return PORTFOLIO_SLOT_IDS.map((id) => ({ id }));
 }
 
 export default async function PortfolioDetailPage({

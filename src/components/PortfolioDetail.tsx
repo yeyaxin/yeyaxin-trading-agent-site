@@ -6,11 +6,9 @@ import {
   usePortfolios,
   computeWeights,
   PORTFOLIO_SLOT_IDS,
-  DEMO_PORTFOLIO_ID,
   MAX_POSITIONS_PER_PORTFOLIO,
   type PortfolioSlotId,
 } from "@/lib/portfolio";
-import { DEMO_PORTFOLIO, DEMO_SYNTHESIS } from "@/lib/synthesis";
 import { TickerSearch } from "@/components/TickerSearch";
 import { DecisionBadge } from "@/components/DecisionBadge";
 import { Disclaimer } from "@/components/Disclaimer";
@@ -39,9 +37,6 @@ import type {
 const STALE_HOURS = 8;
 
 export function PortfolioDetail({ id }: { id: string }) {
-  if (id === DEMO_PORTFOLIO_ID) {
-    return <DemoPortfolio />;
-  }
   if ((PORTFOLIO_SLOT_IDS as readonly string[]).includes(id)) {
     return <UserPortfolio slotId={id as PortfolioSlotId} />;
   }
@@ -52,16 +47,6 @@ export function PortfolioDetail({ id }: { id: string }) {
         Back to portfolios
       </Link>
     </div>
-  );
-}
-
-function DemoPortfolio() {
-  return (
-    <PortfolioView
-      portfolio={DEMO_PORTFOLIO}
-      synthesis={DEMO_SYNTHESIS}
-      readOnly
-    />
   );
 }
 
@@ -96,11 +81,21 @@ function UserPortfolio({ slotId }: { slotId: PortfolioSlotId }) {
     <PortfolioView
       portfolio={p}
       synthesis={null}
-      onAddPosition={(pos) => portfolios.upsertPosition(slotId, pos)}
-      onRemovePosition={(ticker) => portfolios.removePosition(slotId, ticker)}
-      onSetCash={(c) => portfolios.setCash(slotId, c)}
-      onRename={(n) => portfolios.rename(slotId, n)}
-      onDelete={() => portfolios.remove(slotId)}
+      onAddPosition={async (pos) =>
+        await portfolios.upsertPosition(slotId, pos)
+      }
+      onRemovePosition={async (ticker) => {
+        await portfolios.removePosition(slotId, ticker);
+      }}
+      onSetCash={async (c) => {
+        await portfolios.setCash(slotId, c);
+      }}
+      onRename={async (n) => {
+        await portfolios.rename(slotId, n);
+      }}
+      onDelete={async () => {
+        await portfolios.remove(slotId);
+      }}
     />
   );
 }
@@ -109,11 +104,11 @@ type ViewProps = {
   portfolio: Portfolio;
   synthesis: PortfolioSynthesis | null;
   readOnly?: boolean;
-  onAddPosition?: (pos: Position) => string | null;
-  onRemovePosition?: (ticker: string) => void;
-  onSetCash?: (cashUsd: number) => void;
-  onRename?: (name: string) => void;
-  onDelete?: () => void;
+  onAddPosition?: (pos: Position) => Promise<string | null>;
+  onRemovePosition?: (ticker: string) => Promise<void>;
+  onSetCash?: (cashUsd: number) => Promise<void>;
+  onRename?: (name: string) => Promise<void>;
+  onDelete?: () => Promise<void>;
 };
 
 function PortfolioView({
@@ -315,8 +310,8 @@ function Header({
 }: {
   portfolio: Portfolio;
   readOnly?: boolean;
-  onRename?: (n: string) => void;
-  onDelete?: () => void;
+  onRename?: (n: string) => Promise<void> | void;
+  onDelete?: () => Promise<void> | void;
   confirmingDelete?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -608,7 +603,7 @@ function PositionsTable({
   weights: ReturnType<typeof computeWeights>;
   synthesis: PortfolioSynthesis | null;
   readOnly?: boolean;
-  onRemovePosition?: (ticker: string) => void;
+  onRemovePosition?: (ticker: string) => Promise<void> | void;
   refreshModel: string;
   agentReady: boolean;
   runOne: (ticker: string) => Promise<void>;
@@ -900,8 +895,8 @@ function AddPosition({
   onSetCash,
 }: {
   portfolio: Portfolio;
-  onAddPosition?: (pos: Position) => string | null;
-  onSetCash?: (cashUsd: number) => void;
+  onAddPosition?: (pos: Position) => Promise<string | null> | string | null;
+  onSetCash?: (cashUsd: number) => Promise<void> | void;
 }) {
   const [pendingTicker, setPendingTicker] = useState<{
     symbol: string;
@@ -911,8 +906,9 @@ function AddPosition({
   const [avgCost, setAvgCost] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [cashDraft, setCashDraft] = useState(String(portfolio.cashUsd));
+  const [submitting, setSubmitting] = useState(false);
 
-  function add(e: React.FormEvent) {
+  async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!pendingTicker) {
       setError("Pick a ticker first");
@@ -928,19 +924,24 @@ function AddPosition({
       setError("Avg cost must be a positive number, or leave blank");
       return;
     }
-    const err = onAddPosition?.({
-      ticker: pendingTicker.symbol,
-      shares: sharesNum,
-      avgCost: costNum,
-    });
-    if (err) {
-      setError(err);
-      return;
-    }
-    setPendingTicker(null);
-    setShares("");
-    setAvgCost("");
+    setSubmitting(true);
     setError(null);
+    try {
+      const err = await onAddPosition?.({
+        ticker: pendingTicker.symbol,
+        shares: sharesNum,
+        avgCost: costNum,
+      });
+      if (err) {
+        setError(err);
+        return;
+      }
+      setPendingTicker(null);
+      setShares("");
+      setAvgCost("");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -1006,12 +1007,14 @@ function AddPosition({
 
         <button
           type="submit"
-          disabled={!pendingTicker}
+          disabled={!pendingTicker || submitting}
           className="w-full h-11 rounded-lg bg-accent text-accent-fg font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {pendingTicker
-            ? `Add ${pendingTicker.symbol}`
-            : "Pick a ticker to add"}
+          {submitting
+            ? "Saving…"
+            : pendingTicker
+              ? `Add ${pendingTicker.symbol}`
+              : "Pick a ticker to add"}
         </button>
       </form>
 

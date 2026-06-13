@@ -42,29 +42,27 @@ export function TickerInPortfolios({ ticker }: { ticker: string }) {
         </ul>
       )}
 
-      {notHolding.filter((p) => !p.isDemo).length > 0 ? (
+      {notHolding.length > 0 ? (
         <div className="border-t border-border pt-3 space-y-2">
           <p className="text-xs uppercase tracking-wider text-muted">
             Add to portfolio
           </p>
           <ul className="grid gap-2 sm:grid-cols-2">
-            {notHolding
-              .filter((p) => !p.isDemo)
-              .map((p) => (
-                <li key={p.id}>
-                  <AddToPortfolioButton
-                    portfolioName={p.name}
-                    onAdd={(shares, avgCost) => {
-                      if (!p.slotId) return "Cannot add to demo portfolio";
-                      return portfolios.upsertPosition(p.slotId, {
-                        ticker,
-                        shares,
-                        avgCost,
-                      });
-                    }}
-                  />
-                </li>
-              ))}
+            {notHolding.map((p) => (
+              <li key={p.id}>
+                <AddToPortfolioButton
+                  portfolioName={p.name}
+                  onAdd={async (shares, avgCost) => {
+                    if (!p.slotId) return "Slot id missing";
+                    return await portfolios.upsertPosition(p.slotId, {
+                      ticker,
+                      shares,
+                      avgCost,
+                    });
+                  }}
+                />
+              </li>
+            ))}
           </ul>
         </div>
       ) : null}
@@ -73,7 +71,7 @@ export function TickerInPortfolios({ ticker }: { ticker: string }) {
 }
 
 function HoldingRow({ p }: { p: PortfolioWithTicker }) {
-  const target = p.slotId ? `/portfolio/${p.slotId}` : `/portfolio/demo`;
+  const target = p.slotId ? `/portfolio/${p.slotId}` : "/portfolio";
   return (
     <li>
       <Link
@@ -83,11 +81,6 @@ function HoldingRow({ p }: { p: PortfolioWithTicker }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="font-medium truncate">{p.name}</span>
-            {p.isDemo ? (
-              <span className="rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
-                Demo
-              </span>
-            ) : null}
           </div>
           <div className="text-xs text-muted font-mono mt-0.5">
             {p.position.shares} sh ·{" "}
@@ -105,12 +98,13 @@ function AddToPortfolioButton({
   onAdd,
 }: {
   portfolioName: string;
-  onAdd: (shares: number, avgCost?: number) => string | null;
+  onAdd: (shares: number, avgCost?: number) => Promise<string | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [shares, setShares] = useState("");
   const [avgCost, setAvgCost] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   if (!open) {
     return (
@@ -124,7 +118,7 @@ function AddToPortfolioButton({
     );
   }
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     const sn = Number(shares);
     if (!Number.isFinite(sn) || sn <= 0) {
@@ -136,15 +130,20 @@ function AddToPortfolioButton({
       setError("Avg cost must be > 0 or blank");
       return;
     }
-    const err = onAdd(sn, cn);
-    if (err) {
-      setError(err);
-      return;
-    }
-    setOpen(false);
-    setShares("");
-    setAvgCost("");
+    setSubmitting(true);
     setError(null);
+    try {
+      const err = await onAdd(sn, cn);
+      if (err) {
+        setError(err);
+        return;
+      }
+      setOpen(false);
+      setShares("");
+      setAvgCost("");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -177,9 +176,10 @@ function AddToPortfolioButton({
       <div className="flex items-center gap-2">
         <button
           type="submit"
-          className="h-8 px-3 rounded-md bg-accent text-accent-fg text-xs font-medium hover:opacity-90"
+          disabled={submitting}
+          className="h-8 px-3 rounded-md bg-accent text-accent-fg text-xs font-medium hover:opacity-90 disabled:opacity-50"
         >
-          Add
+          {submitting ? "Saving…" : "Add"}
         </button>
         <button
           type="button"

@@ -300,6 +300,66 @@ def get_job(job_id: str, request: Request) -> JobResp:
     return JobResp(jobId=job_id, **job)
 
 
+class PortfolioListResp(BaseModel):
+    portfolios: list[dict[str, Any]]
+
+
+@app.get("/portfolios", response_model=PortfolioListResp)
+def list_portfolios_endpoint(request: Request) -> PortfolioListResp:
+    """Return all portfolio rows from DynamoDB. Read is gated by password —
+    portfolios contain personal positions and shouldn't be exposed publicly."""
+    _check_auth(request)
+    from .portfolios_store import list_portfolios
+
+    return PortfolioListResp(
+        portfolios=[p.model_dump(exclude_none=True) for p in list_portfolios()],
+    )
+
+
+@app.get("/portfolios/{slot_id}")
+def get_portfolio_endpoint(slot_id: str, request: Request) -> dict[str, Any]:
+    _check_auth(request)
+    from .portfolios_store import VALID_SLOTS, get_portfolio
+
+    if slot_id not in VALID_SLOTS:
+        raise HTTPException(status_code=400, detail=f"slot id must be one of {VALID_SLOTS}")
+    p = get_portfolio(slot_id)
+    if p is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return p.model_dump(exclude_none=True)
+
+
+@app.put("/portfolios/{slot_id}")
+def put_portfolio_endpoint(
+    slot_id: str, request: Request, portfolio: dict[str, Any]
+) -> dict[str, Any]:
+    _check_auth(request)
+    from .portfolios_store import VALID_SLOTS, put_portfolio
+    from .schema import Portfolio
+
+    if slot_id not in VALID_SLOTS:
+        raise HTTPException(status_code=400, detail=f"slot id must be one of {VALID_SLOTS}")
+    # Force the slot id to match the URL — clients can't write to a different slot
+    payload = {**portfolio, "id": slot_id}
+    try:
+        p = Portfolio.model_validate(payload)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    put_portfolio(p)
+    return p.model_dump(exclude_none=True)
+
+
+@app.delete("/portfolios/{slot_id}")
+def delete_portfolio_endpoint(slot_id: str, request: Request) -> dict[str, bool]:
+    _check_auth(request)
+    from .portfolios_store import VALID_SLOTS, delete_portfolio
+
+    if slot_id not in VALID_SLOTS:
+        raise HTTPException(status_code=400, detail=f"slot id must be one of {VALID_SLOTS}")
+    delete_portfolio(slot_id)
+    return {"ok": True}
+
+
 @app.get("/jobs", response_model=JobsListResp)
 def list_jobs(
     request: Request,
