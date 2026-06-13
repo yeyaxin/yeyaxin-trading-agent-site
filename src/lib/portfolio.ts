@@ -37,8 +37,8 @@ function newPortfolio(id: string, name: string): Portfolio {
   };
 }
 
-async function fetchAllFromServer(): Promise<Store> {
-  const items = (await listPortfoliosClient()) as Portfolio[];
+async function fetchAllFromServer(opts: { silent?: boolean } = {}): Promise<Store> {
+  const items = (await listPortfoliosClient(opts)) as Portfolio[];
   const out: Store = { ...EMPTY_STORE };
   for (const p of items) {
     if (p.id === "p1" || p.id === "p2" || p.id === "p3") {
@@ -95,11 +95,10 @@ export function usePortfolios(): PortfolioMutator {
   const [loadError, setLoadError] = useState<string | null>(null);
   const refreshSeq = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     const seq = ++refreshSeq.current;
     try {
-      const next = await fetchAllFromServer();
-      // Drop stale responses if a newer refresh started.
+      const next = await fetchAllFromServer({ silent });
       if (seq !== refreshSeq.current) return;
       setStore(next);
       setLoadError(null);
@@ -118,14 +117,17 @@ export function usePortfolios(): PortfolioMutator {
   }, []);
 
   useEffect(() => {
-    void refresh();
-    const id = window.setInterval(() => void refresh(), REVALIDATE_MS);
+    // First load: allow the password modal to pop if no password is stored.
+    void refresh({ silent: false });
+    // Background revalidation: never pop a modal — the user might be typing
+    // or busy. Server-side state syncs eventually on the next user action.
+    const id = window.setInterval(() => void refresh({ silent: true }), REVALIDATE_MS);
 
     function onCustom() {
-      void refresh();
+      void refresh({ silent: true });
     }
     function onVisibility() {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState === "visible") void refresh({ silent: true });
     }
     window.addEventListener(REFRESH_EVENT, onCustom);
     document.addEventListener("visibilitychange", onVisibility);

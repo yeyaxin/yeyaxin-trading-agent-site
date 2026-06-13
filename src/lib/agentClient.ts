@@ -99,8 +99,9 @@ export const REQUEST_PASSWORD_EVENT_NAME = REQUEST_PASSWORD_EVENT;
 
 /**
  * Run an authenticated fetch. If the server returns 401, clear the cached
- * password, prompt the user, and retry once with the new password. Throws
- * AgentServerError on non-OK responses (other than 401-then-retry).
+ * password, prompt the user, and retry. Loops on persistent 401 (up to 3
+ * total attempts) so a typo doesn't leave the user stuck. Stops on success,
+ * on user cancel, or after the cap. Throws AgentServerError on non-OK.
  */
 async function authedFetch(
   path: string,
@@ -108,28 +109,29 @@ async function authedFetch(
 ): Promise<Response> {
   const { skipPasswordPrompt, ...rest } = init;
   const url = `${agentBaseUrl}${path}`;
+  const MAX_AUTH_RETRIES = 3;
 
-  // First attempt — use whatever password is in sessionStorage.
+  let attempt = 0;
+  // First attempt with current sessionStorage password (may be empty).
   let r = await fetch(url, {
     ...rest,
     headers: { ...rest.headers, ...authHeaders() },
   });
 
-  if (r.status !== 401 || skipPasswordPrompt) return r;
-
-  // 401: clear stale token, ask user.
-  setPassword(null);
-  const fresh = await requestPassword("rejected");
-  if (!fresh) {
-    // User cancelled. Surface the original 401.
-    return r;
+  while (r.status === 401 && !skipPasswordPrompt && attempt < MAX_AUTH_RETRIES) {
+    attempt++;
+    setPassword(null);
+    const fresh = await requestPassword("rejected");
+    if (!fresh) {
+      // User cancelled — surface the 401 to the caller.
+      return r;
+    }
+    r = await fetch(url, {
+      ...rest,
+      headers: { ...rest.headers, ...authHeaders() },
+    });
   }
 
-  // Retry with the new password.
-  r = await fetch(url, {
-    ...rest,
-    headers: { ...rest.headers, ...authHeaders() },
-  });
   return r;
 }
 
@@ -226,17 +228,31 @@ export async function listJobs(filter: {
   return data.jobs;
 }
 
-// === Portfolios CRUD (the GET path is silent on 401 — empty list — to avoid
-// repeatedly prompting on initial page load before user clicks anything) ===
+// === Portfolios CRUD ===
 
-export async function listPortfolios(): Promise<unknown[]> {
-  if (!getPassword()) return [];
-  const r = await authedFetch("/portfolios", { skipPasswordPrompt: true });
-  if (r.status === 401) {
-    setPassword(null);
-    return [];
+/**
+ * List portfolios. Will prompt for the password if none is set (otherwise the
+ * page would render empty when there's actually data on the server). The
+ * caller can pass {silent:true} to opt out — used for revalidation timers
+ * that shouldn't pop a modal in the user's face.
+ */
+export async function listPortfolios(
+  opts: { silent?: boolean } = {},
+): Promise<unknown[]> {
+  if (!getPassword()) {
+    if (opts.silent) return [];
+    const fresh = await requestPassword("missing");
+    if (!fresh) return [];
   }
-  if (!r.ok) throw new AgentServerError(r.status, `list portfolios: ${r.status}`);
+  const r = await authedFetch("/portfolios");
+  if (!r.ok) {
+    if (r.status === 401) {
+      // User cancelled the modal during a retry attempt — return empty.
+      setPassword(null);
+      return [];
+    }
+    throw new AgentServerError(r.status, `list portfolios: ${r.status}`);
+  }
   const data = (await r.json()) as { portfolios: unknown[] };
   return data.portfolios ?? [];
 }
