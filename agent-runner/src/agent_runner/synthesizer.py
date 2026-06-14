@@ -231,15 +231,21 @@ def synthesize_portfolio(
         int(response.usage.output_tokens),
     )
 
+    # Anthropic's structured output respects `required` most of the time
+    # but occasionally drops fields. Use defensive access so a missing list
+    # produces an empty section instead of a KeyError that loses the run.
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    raw_decisions = payload.get("decisions") or []
+    raw_factors = payload.get("factorExposure") or []
+    raw_risks = payload.get("topRisks") or []
     synth = PortfolioSynthesis(
         id=f"{portfolio.id}-synth-{now[:10]}-{now[11:19].replace(':', '')}",
         portfolioId=portfolio.id,
         createdAt=now,
-        bookCommentary=str(payload["bookCommentary"]),
-        decisions=[PositionDecision(**d) for d in payload["decisions"]],
-        factorExposure=[FactorExposure(**f) for f in payload["factorExposure"]],
-        topRisks=[str(r) for r in payload["topRisks"]],
+        bookCommentary=str(payload.get("bookCommentary") or ""),
+        decisions=[PositionDecision(**d) for d in raw_decisions if isinstance(d, dict)],
+        factorExposure=[FactorExposure(**f) for f in raw_factors if isinstance(f, dict)],
+        topRisks=[str(r) for r in raw_risks],
         usage=SynthesisUsage(costUsd=round(tally.cost_usd, 4)),
     )
 

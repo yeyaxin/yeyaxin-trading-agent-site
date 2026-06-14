@@ -93,17 +93,19 @@ class Portfolio(BaseModel):
 
 
 class PositionDecision(BaseModel):
-    ticker: str
-    action: PortfolioAction
-    rationale: str
-    sizingNote: str
+    # All fields default-able so a missing key in Anthropic's structured
+    # output doesn't crash the whole synthesis. The UI tolerates empties.
+    ticker: str = ""
+    action: PortfolioAction = "HOLD"
+    rationale: str = ""
+    sizingNote: str = ""
     perTickerRunId: str | None = None
     lastAnalyzedAt: str | None = None
 
 
 class FactorExposure(BaseModel):
-    label: str
-    weightPct: float = Field(ge=0)
+    label: str = ""
+    weightPct: float = Field(default=0, ge=0)
 
 
 class SynthesisUsage(BaseModel):
