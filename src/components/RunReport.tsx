@@ -40,22 +40,23 @@ export function RunReport({ run }: { run: Run }) {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-10 space-y-8">
-      <header className="flex items-start justify-between gap-6 flex-wrap">
-        <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <h1 className="font-mono text-3xl font-semibold">{run.ticker}</h1>
-            <DecisionBadge decision={run.decision} size="lg" />
-            <span className="text-sm text-muted">
-              confidence {(run.confidence * 100).toFixed(0)}%
-            </span>
-          </div>
-          <p className="text-lg text-foreground max-w-2xl">{run.oneLine}</p>
-          <p className="text-xs font-mono text-muted">
-            as of {run.asOfDate} · run {new Date(run.createdAt).toLocaleString()} ·{" "}
-            {run.model.deep} / {run.model.quick} · {run.debateRounds} debate round
-            {run.debateRounds === 1 ? "" : "s"} · {formatUsd(run.usage.costUsd)}
-          </p>
+      <header className="space-y-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="font-mono text-3xl font-semibold">{run.ticker}</h1>
+          <DecisionBadge decision={run.decision} size="lg" />
+          <span className="text-sm text-muted">
+            confidence {(run.confidence * 100).toFixed(0)}%
+          </span>
         </div>
+        <p className="italic text-base text-muted leading-relaxed">
+          {run.oneLine}
+        </p>
+        <p className="text-xs font-mono text-muted">
+          as of {run.asOfDate} · run{" "}
+          {new Date(run.createdAt).toLocaleString()} · {run.model.deep} /{" "}
+          {run.model.quick} · {run.debateRounds} debate round
+          {run.debateRounds === 1 ? "" : "s"} · {formatUsd(run.usage.costUsd)}
+        </p>
       </header>
 
       <TickerInPortfolios ticker={run.ticker} />

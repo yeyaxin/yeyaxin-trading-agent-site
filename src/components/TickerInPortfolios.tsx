@@ -1,15 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   usePortfolios,
   useTickerInPortfolios,
   type PortfolioWithTicker,
 } from "@/lib/portfolio";
+import { getPassword } from "@/lib/agentClient";
 import type { PortfolioAction } from "@/lib/types";
 
+/**
+ * "Held in" panel that only renders for authenticated users.
+ *
+ * The /runs/[id]/ page is publicly visible (anyone can read a run report).
+ * For unauthenticated visitors we hide this panel entirely instead of
+ * popping a password prompt — the run report is the focus, portfolio
+ * context is a privileged extra.
+ */
 export function TickerInPortfolios({ ticker }: { ticker: string }) {
+  // Only mount the hook tree when there's a password in sessionStorage.
+  // useState initializer runs at mount; the effect updates if it changes.
+  const [authed, setAuthed] = useState<boolean>(() => Boolean(getPassword()));
+
+  useEffect(() => {
+    function check() {
+      setAuthed(Boolean(getPassword()));
+    }
+    // sessionStorage doesn't fire 'storage' events for the writing tab, but
+    // does fire on other tabs. We poll once per second as a low-cost fallback
+    // for the writing tab (e.g. user submits the password modal on this page).
+    check();
+    const id = window.setInterval(check, 1000);
+    window.addEventListener("storage", check);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("storage", check);
+    };
+  }, []);
+
+  if (!authed) return null;
+  return <AuthedTickerInPortfolios ticker={ticker} />;
+}
+
+function AuthedTickerInPortfolios({ ticker }: { ticker: string }) {
   const { hydrated, holding, notHolding } = useTickerInPortfolios(ticker);
   const portfolios = usePortfolios();
 

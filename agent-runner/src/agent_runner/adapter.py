@@ -50,6 +50,37 @@ def _strip_inline_md(s: str) -> str:
     return s.strip()
 
 
+def _balanced_parens(s: str) -> bool:
+    """True if () [] are balanced in s. Used to reject sentence fragments
+    that start mid-parenthetical (e.g. '$17.2B consensus) signals...')."""
+    paren = 0
+    bracket = 0
+    for ch in s:
+        if ch == "(":
+            paren += 1
+        elif ch == ")":
+            paren -= 1
+        elif ch == "[":
+            bracket += 1
+        elif ch == "]":
+            bracket -= 1
+        if paren < 0 or bracket < 0:
+            return False
+    return paren == 0 and bracket == 0
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Split into sentences without breaking on common false positives.
+
+    Naive (?<=[.!?])\\s+ trips on 'vs.', 'i.e.', 'e.g.', 'Mr.', '$17.2B',
+    etc. — period+space happens but the next character is lowercase, a
+    digit, or punctuation, which a real sentence boundary doesn't have.
+    Require the next non-whitespace char to be uppercase (or digit-like
+    sentence-starts are rare enough we accept the false negative).
+    """
+    return re.split(r"(?<=[.!?])\s+(?=[A-Z])", text)
+
+
 def _summary(body: str) -> str:
     body = body.strip()
     if not body:
@@ -59,20 +90,26 @@ def _summary(body: str) -> str:
         s = line.strip()
         if not s:
             continue
+        # Markdown structural noise.
         if s.startswith("---") or set(s) <= {"-", "=", "*"}:
             continue
         if s.startswith("#"):
+            continue
+        # Markdown table separator rows like |---|---|---|
+        if re.fullmatch(r"\|[\s\-:|]+\|", s):
+            continue
+        # Markdown table data rows: start with | and have at least 2 pipes.
+        if s.startswith("|") and s.count("|") >= 2:
             continue
         s = _PREFIX_LABEL_RE.sub("", s).strip()
         # Re-check for header marker after the speaker-label strip uncovered it.
         if s.startswith("#"):
             continue
-        # Strip ALL inline md so we can evaluate the real content.
         cleaned = _strip_inline_md(s)
         if not cleaned:
             continue
         # If the line has no period AND looks like "Label1: V1 | Label2: V2"
-        # — multiple short k:v pairs separated by | or ; — drop it.
+        # (multiple short k:v pairs separated by | or ;), drop it.
         if (
             "." not in cleaned
             and "|" in cleaned
@@ -82,7 +119,7 @@ def _summary(body: str) -> str:
         # Drop pure label/title lines (all caps + short).
         if cleaned.isupper() and len(cleaned) < 80:
             continue
-        # Drop "Date: ..." style standalone metadata lines.
+        # Drop "Date: ..." standalone metadata lines.
         if re.fullmatch(r"[A-Za-z][A-Za-z ]*:\s*[A-Za-z0-9 ,\-–]+", cleaned):
             continue
         cleaned_lines.append(cleaned)
@@ -90,11 +127,15 @@ def _summary(body: str) -> str:
             break
 
     text = " ".join(cleaned_lines) or _strip_inline_md(body)
-    parts = re.split(r"(?<=[.!?])\s+", text)
+    parts = _split_sentences(text)
     for p in parts:
         p = p.strip()
-        # require a real sentence with multiple words and reasonable length
-        if len(p) >= 40 and len(p.split()) >= 6:
+        # Require a real sentence: ≥40 chars, ≥6 words, balanced punctuation.
+        if (
+            len(p) >= 40
+            and len(p.split()) >= 6
+            and _balanced_parens(p)
+        ):
             return p[:240]
     return text[:240]
 
@@ -259,10 +300,18 @@ def to_run(
 
     rationale = _safe_str(_attr(recommendation, "rationale"))
     final_decision = _safe_str(_attr(agent_state, "final_trade_decision"))
-    one_line_source = rationale or final_decision or f"{ticker}: agent panel produced no clear signal."
-    one_line_parts = re.split(r"(?<=[.!?])\s+", one_line_source.strip())
+    one_line_source = (
+        rationale
+        or final_decision
+        or f"{ticker}: agent panel produced no clear signal."
+    )
+    one_line_parts = _split_sentences(one_line_source.strip())
     one_line = next(
-        (s.strip() for s in one_line_parts if len(s.strip()) > 30),
+        (
+            s.strip()
+            for s in one_line_parts
+            if len(s.strip()) > 30 and _balanced_parens(s.strip())
+        ),
         one_line_source[:200].strip(),
     )
 
