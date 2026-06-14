@@ -26,6 +26,12 @@ import {
   SYNTHESIS_KEY,
   type TickerJobState,
 } from "@/lib/job-tracker";
+import {
+  deriveTickerState,
+  isStale as isStaleState,
+  timeAgo,
+  type TickerState,
+} from "@/lib/ticker-state";
 import type {
   Portfolio,
   PortfolioAction,
@@ -123,19 +129,43 @@ function PortfolioView({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const { health } = useAgentHealth();
   const weights = useMemo(() => computeWeights(portfolio), [portfolio]);
-  const stalePositions = portfolio.positions.filter((p) =>
-    isStale(synthesis, p.ticker),
-  );
-
   const refreshModel = "claude-haiku-4-5";
-  const refreshAllCost = stalePositions.length * estimateRunCost(refreshModel);
   const monthSpent = health?.monthSpentUsd ?? 0;
   const monthlyCap = health?.monthlyCapUsd ?? MONTHLY_CAP_USD;
-  const overCap = monthSpent + refreshAllCost > monthlyCap;
   const agentReady = Boolean(health?.ok && health?.anthropicConfigured);
 
   const { byTicker, startTickerRun, startSynthesisRun, clearTickerStatus } =
     useJobTracker(portfolio.id, agentReady);
+
+  // Server-side authoritative state, with optimistic-from-this-tab overlay.
+  const tickerStates = useMemo(() => {
+    const out: Record<string, TickerState> = {};
+    for (const p of portfolio.positions) {
+      const base = deriveTickerState(p);
+      const optimistic = byTicker[p.ticker];
+      out[p.ticker] =
+        optimistic?.state === "running"
+          ? {
+              lifecycle: "running",
+              lastAnalyzedAt: base.lastAnalyzedAt,
+              lastRunId: base.lastRunId,
+              jobId: optimistic.jobId,
+              errorMessage: null,
+            }
+          : base;
+    }
+    return out;
+  }, [portfolio.positions, byTicker]);
+
+  const lifecycles = Object.values(tickerStates).map((s) => s.lifecycle);
+  const anyTickerRunning = lifecycles.includes("running");
+  const anyTickerNotReady = lifecycles.some((l) => l !== "ready");
+  const stalePositions = portfolio.positions.filter((p) =>
+    isStaleState(tickerStates[p.ticker]) || tickerStates[p.ticker].lifecycle === "never-analyzed",
+  );
+
+  const refreshAllCost = stalePositions.length * estimateRunCost(refreshModel);
+  const overCap = monthSpent + refreshAllCost > monthlyCap;
 
   // agentClient handles password prompts and 401 retries via the global
   // PasswordPromptHost. These callbacks just call through.
@@ -213,6 +243,9 @@ function PortfolioView({
           monthSpent={monthSpent}
           monthlyCap={monthlyCap}
           agentReady={agentReady}
+          anyTickerRunning={anyTickerRunning}
+          anyTickerNotReady={anyTickerNotReady}
+          tickerStates={tickerStates}
           onSynthesize={synthesizeNow}
           onDismiss={() => clearTickerStatus(SYNTHESIS_KEY)}
         />
@@ -255,7 +288,7 @@ function PortfolioView({
           overCap={overCap}
           agentReady={agentReady}
           onRefreshAll={refreshAllStale}
-          running={anyRunning}
+          anyTickerRunning={anyTickerRunning}
         />
       ) : null}
 
@@ -492,6 +525,9 @@ function SynthesizeActionPanel({
   monthSpent,
   monthlyCap,
   agentReady,
+  anyTickerRunning,
+  anyTickerNotReady,
+  tickerStates,
   onSynthesize,
   onDismiss,
 }: {
@@ -501,6 +537,9 @@ function SynthesizeActionPanel({
   monthSpent: number;
   monthlyCap: number;
   agentReady: boolean;
+  anyTickerRunning: boolean;
+  anyTickerNotReady: boolean;
+  tickerStates: Record<string, TickerState>;
   onSynthesize: () => void;
   onDismiss: () => void;
 }) {
@@ -511,7 +550,16 @@ function SynthesizeActionPanel({
   const isDone = synthState?.state === "done";
   const isError = synthState?.state === "error";
 
+  // Tickers that aren't ready, with their state — used in the disabled tooltip.
+  const blockingTickers: { ticker: string; lifecycle: string }[] = [];
+  for (const [t, st] of Object.entries(tickerStates)) {
+    if (st.lifecycle !== "ready") {
+      blockingTickers.push({ ticker: t, lifecycle: st.lifecycle });
+    }
+  }
+
   let buttonLabel: string;
+  let buttonTitle = "";
   let disabled = false;
   if (!agentReady) {
     buttonLabel = "Agent server offline";
@@ -525,6 +573,15 @@ function SynthesizeActionPanel({
   } else if (isRunning) {
     buttonLabel = "Synthesizing…";
     disabled = true;
+  } else if (anyTickerNotReady) {
+    buttonLabel = "Analyze all tickers first";
+    disabled = true;
+    const summary = blockingTickers
+      .map((b) => `${b.ticker} (${b.lifecycle})`)
+      .join(", ");
+    buttonTitle =
+      `Synthesis requires every position to have a completed analysis. ` +
+      `Blocking: ${summary}.`;
   } else {
     buttonLabel = synthesis
       ? `Re-synthesize · est. ${formatUsd(cost)}`
@@ -549,6 +606,7 @@ function SynthesizeActionPanel({
           type="button"
           onClick={onSynthesize}
           disabled={disabled}
+          title={buttonTitle}
           className="h-12 px-6 rounded-lg bg-accent text-accent-fg text-base font-semibold shadow-sm hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
         >
           {buttonLabel}
@@ -647,8 +705,27 @@ function PositionsTable({
           {portfolio.positions.map((p) => {
             const w = weights.positionWeights.find((x) => x.ticker === p.ticker);
             const d = decisionByTicker.get(p.ticker);
-            const stale = isStale(synthesis, p.ticker);
-            const runId = d?.perTickerRunId ?? tickerToRunId[p.ticker];
+            // Authoritative ticker state from server-persisted Position.
+            // The job-tracker (in-memory, this tab only) is layered on top
+            // for instant feedback after a click; until the server confirms,
+            // we trust whichever says "running".
+            const baseState = deriveTickerState(p);
+            const optimistic = byTicker[p.ticker];
+            const state: TickerState =
+              optimistic?.state === "running"
+                ? {
+                    lifecycle: "running",
+                    lastAnalyzedAt: baseState.lastAnalyzedAt,
+                    lastRunId: baseState.lastRunId,
+                    jobId: optimistic.jobId,
+                    errorMessage: null,
+                  }
+                : baseState;
+            const stale = isStaleState(state);
+            // Prefer the position's own lastRunId; fall back to the synthesis
+            // decision's perTickerRunId (legacy demo path) or the bundled fixtures.
+            const runId =
+              state.lastRunId ?? d?.perTickerRunId ?? tickerToRunId[p.ticker];
             return (
               <tr
                 key={p.ticker}
@@ -676,18 +753,27 @@ function PositionsTable({
                   {d ? <PortfolioActionBadge action={d.action} /> : <span className="text-muted">—</span>}
                 </Td>
                 <Td mono>
-                  {d?.lastAnalyzedAt ? (
+                  {state.lifecycle === "running" ? (
+                    <span className="text-accent">running…</span>
+                  ) : state.lifecycle === "ready" ? (
                     <span className={stale ? "text-hold" : ""}>
-                      {timeAgo(d.lastAnalyzedAt)}
+                      {timeAgo(state.lastAnalyzedAt)}
                       {stale ? " (stale)" : ""}
                     </span>
+                  ) : state.lifecycle === "error" ? (
+                    <span
+                      className="text-sell"
+                      title={state.errorMessage ?? "error"}
+                    >
+                      error
+                    </span>
                   ) : (
-                    "—"
+                    <span className="text-muted">never</span>
                   )}
                 </Td>
                 <Td>
                   <div className="flex items-center justify-end gap-2">
-                    {runId ? (
+                    {runId && state.lifecycle !== "never-analyzed" ? (
                       <Link
                         href={`/runs/${runId}`}
                         className="text-xs text-accent hover:underline"
@@ -697,7 +783,7 @@ function PositionsTable({
                     ) : null}
                     <RowAnalyzeButton
                       ticker={p.ticker}
-                      tickerState={byTicker[p.ticker]}
+                      state={state}
                       agentReady={agentReady}
                       refreshModel={refreshModel}
                       onClick={() => runOne(p.ticker)}
@@ -731,7 +817,7 @@ function ForceRefresh({
   overCap,
   agentReady,
   onRefreshAll,
-  running,
+  anyTickerRunning,
 }: {
   stale: number;
   totalCost: number;
@@ -740,25 +826,29 @@ function ForceRefresh({
   overCap: boolean;
   agentReady: boolean;
   onRefreshAll: () => Promise<void>;
-  running: boolean;
+  anyTickerRunning: boolean;
 }) {
-  const blocked = overCap || !agentReady || running;
+  const blocked = overCap || !agentReady || anyTickerRunning;
   const reason = !agentReady
     ? "Agent server offline"
     : overCap
       ? "Over monthly cap"
-      : running
-        ? "Running…"
+      : anyTickerRunning
+        ? "A ticker is already running"
         : null;
+  const blockedTitle = anyTickerRunning
+    ? "Another ticker is currently being analyzed. Force refresh runs every stale ticker through the same pipeline; wait for the in-flight one to finish first."
+    : "";
   return (
     <section className="rounded-xl border border-border bg-white p-5 flex items-center justify-between gap-4 flex-wrap">
       <div>
         <h2 className="font-medium">Force refresh stale positions</h2>
         <p className="text-sm text-muted">
-          {stale} position{stale === 1 ? "" : "s"} have analyses older than{" "}
-          {STALE_HOURS}h. Refresh would cost approximately{" "}
+          {stale} position{stale === 1 ? "" : "s"} need analysis (never
+          analyzed or older than {STALE_HOURS}h). Each one runs through the
+          same TradingAgents pipeline as the per-row Re-analyze button.
+          Refresh would cost approximately{" "}
           <span className="font-mono">{formatUsd(totalCost)}</span> on Haiku.
-          Synthesis runs once after refreshes complete.
         </p>
         <p className="text-xs font-mono text-muted mt-1">
           month: {formatUsd(monthSpent)} / {formatUsd(monthlyCap)} cap
@@ -767,6 +857,7 @@ function ForceRefresh({
       <button
         type="button"
         disabled={blocked}
+        title={blockedTitle}
         onClick={() => {
           void onRefreshAll();
         }}
@@ -850,52 +941,56 @@ function AgentStatusBanner({
 
 function RowAnalyzeButton({
   ticker,
-  tickerState,
+  state,
   agentReady,
   refreshModel,
   onClick,
 }: {
   ticker: string;
-  tickerState: TickerJobState | undefined;
+  state: TickerState;
   agentReady: boolean;
   refreshModel: string;
   onClick: () => void;
 }) {
-  const isRunning = tickerState?.state === "running";
-  const isError = tickerState?.state === "error";
-  const isDone = tickerState?.state === "done";
+  const cost = formatUsd(estimateRunCost(refreshModel));
 
   let label: string;
   let title: string;
-  if (isRunning) {
+  let style: string;
+  let disabled = false;
+
+  if (!agentReady) {
+    label = "Analyze";
+    title = "Agent server offline";
+    style = "border-border";
+    disabled = true;
+  } else if (state.lifecycle === "running") {
     label = "Running…";
-    title = `Run started ${tickerState!.startedAt ? "around " + new Date(tickerState!.startedAt).toLocaleTimeString() : ""}; safe to navigate away`;
-  } else if (isError) {
+    title = "Agent run in progress · safe to navigate away";
+    style = "border-accent/40 bg-accent/5 text-accent cursor-not-allowed";
+    disabled = true;
+  } else if (state.lifecycle === "error") {
     label = "Retry";
-    title = (tickerState as Extract<TickerJobState, { state: "error" }>).message;
-  } else if (isDone) {
-    label = "Re-run";
-    title = `Last run finished. Reload page to see report.`;
-  } else {
+    title = `Last run failed: ${state.errorMessage ?? "unknown error"}. Click to try again (~${cost}).`;
+    style = "border-sell/40 bg-sell/5 text-sell hover:bg-sell/10";
+  } else if (state.lifecycle === "ready") {
     label = "Re-analyze";
-    title = agentReady
-      ? `Re-analyze ${ticker} · est. ${formatUsd(estimateRunCost(refreshModel))}`
-      : "Agent server offline";
+    title = `Last analyzed ${timeAgo(state.lastAnalyzedAt)}. Re-analyze ${ticker} (~${cost}).`;
+    style = "border-border hover:bg-slate-50";
+  } else {
+    // never-analyzed
+    label = "Analyze";
+    title = `${ticker} has never been analyzed. Click to run the agent panel (~${cost}).`;
+    style = "border-accent/60 bg-accent/5 text-accent hover:bg-accent/10";
   }
 
   return (
     <button
       type="button"
       title={title}
-      disabled={!agentReady || isRunning}
+      disabled={disabled}
       onClick={onClick}
-      className={`text-xs px-2 py-1 rounded-md border ${
-        isRunning
-          ? "border-accent/40 bg-accent/5 text-accent cursor-not-allowed"
-          : isError
-            ? "border-sell/40 bg-sell/5 text-sell hover:bg-sell/10"
-            : "border-border hover:bg-slate-50"
-      } disabled:opacity-40 disabled:cursor-not-allowed`}
+      className={`text-xs px-2 py-1 rounded-md border ${style} disabled:opacity-40 disabled:cursor-not-allowed`}
     >
       {label}
     </button>
@@ -1147,21 +1242,4 @@ function Td({
   );
 }
 
-function isStale(synthesis: PortfolioSynthesis | null, ticker: string): boolean {
-  if (!synthesis) return true;
-  const decision = synthesis.decisions.find((d) => d.ticker === ticker);
-  if (!decision?.lastAnalyzedAt) return true;
-  const age = Date.now() - new Date(decision.lastAnalyzedAt).getTime();
-  return age > STALE_HOURS * 60 * 60 * 1000;
-}
-
-function timeAgo(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const min = Math.round(ms / 60_000);
-  if (min < 60) return `${min}m ago`;
-  const h = Math.round(min / 60);
-  if (h < 48) return `${h}h ago`;
-  const d = Math.round(h / 24);
-  return `${d}d ago`;
-}
 

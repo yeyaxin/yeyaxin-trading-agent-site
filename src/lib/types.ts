@@ -49,11 +49,29 @@ export type RunSummary = Pick<
   "id" | "ticker" | "asOfDate" | "createdAt" | "decision" | "confidence" | "oneLine"
 > & { costUsd: number };
 
+/**
+ * Per-position analysis state. Persisted server-side so it's consistent
+ * across browsers / tabs / sessions.
+ *
+ * Lifecycle:
+ *   never-analyzed (no fields set) → running (lastJobId set) → ready
+ *     (lastAnalyzedAt + lastRunId set, lastJobId/Error cleared)
+ *   running → error (lastError set, lastJobId cleared)
+ */
 export type Position = {
   ticker: string;
   shares: number;
   avgCost?: number;
   lastPrice?: number;
+
+  /** Set when an agent run for this ticker is in flight; cleared when done/error. */
+  lastJobId?: string;
+  /** ISO 8601 timestamp of the last successful analysis. Drives staleness. */
+  lastAnalyzedAt?: string;
+  /** Run id (e.g. "nvda-2026-06-14") of the most recent successful run. */
+  lastRunId?: string;
+  /** Set on the most recent failed run; cleared by the next successful run. */
+  lastError?: string;
 };
 
 export type Portfolio = {

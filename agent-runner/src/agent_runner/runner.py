@@ -1,4 +1,17 @@
-"""Drive a single TradingAgents run end-to-end and emit Run JSON."""
+"""Drive a single TradingAgents run end-to-end and emit Run JSON.
+
+This module is the SINGLE canonical entry point for any per-ticker analysis
+in the system:
+  - The /run HTTP endpoint (Re-analyze button) calls execute()
+  - The Force-refresh path loops over stale tickers and calls execute()
+    once per ticker
+  - The CLI `uv run run-analysis` calls execute()
+
+All paths produce identical results — same TradingAgentsGraph.propagate()
+invocation, same model config, same Anthropic API calls. There is no
+"force refresh" mode that does something different from "re-analyze";
+"force refresh" is just "re-analyze N tickers in sequence".
+"""
 
 from __future__ import annotations
 

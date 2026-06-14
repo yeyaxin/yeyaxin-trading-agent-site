@@ -116,3 +116,54 @@ def delete_portfolio(slot_id: str) -> bool:
     t = _client()
     t.delete_item(Key={"slotId": slot_id})
     return True
+
+
+def update_position_state(
+    slot_id: str,
+    ticker: str,
+    *,
+    last_job_id: str | None = ...,  # type: ignore[assignment]
+    last_analyzed_at: str | None = ...,  # type: ignore[assignment]
+    last_run_id: str | None = ...,  # type: ignore[assignment]
+    last_error: str | None = ...,  # type: ignore[assignment]
+) -> bool:
+    """Read-modify-write a single Position's analysis-state fields.
+
+    Use the sentinel default (Ellipsis) to leave a field untouched. Pass
+    `None` explicitly to clear a field. Returns True if the position was
+    found and updated, False otherwise.
+
+    NOTE: read-modify-write isn't strictly serializable. Two concurrent
+    runs for the same ticker (which we don't support — UI gates on
+    'already running') could lose one update. Acceptable for this scale.
+    """
+    if slot_id not in VALID_SLOTS:
+        return False
+    p = get_portfolio(slot_id)
+    if not p:
+        return False
+
+    upper = ticker.upper()
+    found = False
+    for pos in p.positions:
+        if pos.ticker.upper() != upper:
+            continue
+        found = True
+        if last_job_id is not ...:
+            pos.lastJobId = last_job_id
+        if last_analyzed_at is not ...:
+            pos.lastAnalyzedAt = last_analyzed_at
+        if last_run_id is not ...:
+            pos.lastRunId = last_run_id
+        if last_error is not ...:
+            pos.lastError = last_error
+        break
+    if not found:
+        return False
+    p.updatedAt = (
+        os.environ.get("__test_now__")
+        or __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+    put_portfolio(p)
+    return True

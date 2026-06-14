@@ -146,6 +146,8 @@ def _get_job(jid: str) -> dict[str, Any] | None:
 
 def _do_run(jid: str, req: RunReq) -> None:
     from .cli_run import MODEL_ALIAS
+    from .portfolios_store import VALID_SLOTS, update_position_state
+    from datetime import datetime, timezone
 
     if req.model not in MODEL_ALIAS:
         _set_job(jid, state="error", error=f"unknown model {req.model!r}")
@@ -161,6 +163,23 @@ def _do_run(jid: str, req: RunReq) -> None:
         debate_rounds=req.depth,
     )
 
+    # Mark the position as 'running' on the server side so other clients
+    # see the in-flight state immediately (not just the tab that started it).
+    portfolio_id = req.portfolioId or ""
+    track_position = portfolio_id in VALID_SLOTS
+    if track_position:
+        try:
+            update_position_state(
+                portfolio_id,
+                rr.ticker,
+                last_job_id=jid,
+                last_error=None,
+            )
+        except Exception:
+            # Don't fail the run if persisting state hiccups; the in-memory
+            # job tracker still reflects state via /jobs.
+            pass
+
     _set_job(jid, state="running")
     try:
         result = execute(rr)
@@ -171,8 +190,33 @@ def _do_run(jid: str, req: RunReq) -> None:
             decision=result.run.decision,
             actualCostUsd=round(result.actual_cost_usd, 4),
         )
+        if track_position:
+            try:
+                update_position_state(
+                    portfolio_id,
+                    rr.ticker,
+                    last_job_id=None,
+                    last_analyzed_at=datetime.now(timezone.utc).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    ),
+                    last_run_id=result.run.id,
+                    last_error=None,
+                )
+            except Exception:
+                pass
     except Exception as e:  # noqa: BLE001 — surface anything to the UI
-        _set_job(jid, state="error", error=str(e))
+        msg = str(e)
+        _set_job(jid, state="error", error=msg)
+        if track_position:
+            try:
+                update_position_state(
+                    portfolio_id,
+                    rr.ticker,
+                    last_job_id=None,
+                    last_error=msg,
+                )
+            except Exception:
+                pass
 
 
 def _do_synth(jid: str, req: SynthReq) -> None:

@@ -76,6 +76,12 @@ class Position(BaseModel):
     avgCost: float | None = Field(default=None, gt=0)
     lastPrice: float | None = Field(default=None, gt=0)
 
+    # Per-ticker analysis state (mirrors src/lib/types.ts Position).
+    lastJobId: str | None = None
+    lastAnalyzedAt: str | None = None
+    lastRunId: str | None = None
+    lastError: str | None = None
+
 
 class Portfolio(BaseModel):
     id: str
